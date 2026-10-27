@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>בדיקת היתכנות – תמונה לתלת-ממד</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1c1c1a;--mut:#6b6b64;--card:#fff;--line:#e3e1d8;--gold:#9a7b2f;--ok:#2e7d4f}
+@media (prefers-color-scheme:dark){:root{--bg:#121211;--fg:#eeece4;--mut:#a09e94;--card:#1b1b19;--line:#32312c;--gold:#d4af37;--ok:#5fc08a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:32px 0 8px;color:var(--gold)}
+p,li{color:var(--fg)}.mut{color:var(--mut);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+ol{padding-inline-start:22px}
+code,.prompt{direction:ltr;text-align:left;unicode-bidi:plaintext}
+.prompt{display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:13px/1.5 ui-monospace,Menlo,monospace;margin:8px 0}
+button{font:inherit;font-size:14px;border:1px solid var(--gold);background:transparent;color:var(--gold);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.primary{background:var(--gold);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+label{display:block;margin:10px 0 2px;font-size:14px;color:var(--mut)}
+select,textarea,input[type=number]{width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:99px;padding:0 8px;color:var(--mut);margin-inline-start:6px}
+</style>
+</head>
+<body>
+<main>
+<h1>בדיקת היתכנות: מתמונת טבעת לקובץ תלת-ממד</h1>
+<p class="mut">משך: כשעה. עלות: אפס. המטרה: לדעת אם הקבצים שיוצאים חוסכים ליהלומן זמן אמיתי לפני שמשקיעים בפיתוח.</p>
+
+<h2>השאלה שהבדיקה עונה עליה</h2>
+<div class="card">אם יהלומן מקבל קובץ תלת-ממד שנוצר מתמונה שהלקוח אישר, <b>האם זה מקצר לו את העבודה לעומת התחלה מאפס?</b> לא צריך שהקובץ יהיה מושלם. צריך שיהיה נקודת התחלה טובה.</div>
+
+<h2>שלבים</h2>
+<ol>
+<li>מייצרים תמונה לכל אחד מהפרומפטים למטה, בכל מחולל תמונות שיש לכם (ChatGPT, Gemini וכדומה). חשוב: <b>טבעת אחת, בלי יד, רקע לבן, זווית של שלושה רבעים.</b></li>
+<li>נכנסים לדמו החינמי של TRELLIS.2 ב-Hugging Face: מחפשים "TRELLIS.2 space" ב-<code>huggingface.co/spaces</code>.</li>
+<li>מעלים את התמונה, מייצרים, ומורידים את קובץ ה-GLB.</li>
+<li>היהלומן פותח את הקובץ בתוכנה שלו (Rhino, Matrix, Blender או כל מציג GLB) ומדרג בטופס למטה.</li>
+<li>לוחצים "העתק סיכום" ושולחים לי בוואטסאפ.</li>
+</ol>
+
+<h2>8 פרומפטים לבדיקה</h2>
+<p class="mut">מדורגים מקל לקשה. התוכן באנגלית כי מחוללי תמונות עובדים טוב יותר כך.</p>
+<div id="prompts"></div>
+
+<h2>טופס דירוג</h2>
+<p class="mut">ממלאים טופס לכל קובץ. הנתונים נשמרים בדפדפן הזה בלבד.</p>
+<div id="forms"></div>
+
+<div class="card">
+<b>סיכום כללי</b>
+<label for="overall">בממוצע, כמה זמן זה היה חוסך לך לעומת התחלה מאפס?</label>
+<select id="overall">
+<option value="">בחר</option><option>כלום, בונה מחדש</option><option>עד 25%</option><option>25% עד 50%</option><option>50% עד 75%</option><option>יותר מ-75%</option>
+</select>
+<label for="pay">כמה היית מוכן לשלם בחודש על כלי כזה?</label>
+<input id="pay" type="number" min="0" placeholder="סכום ב-$">
+<label for="free">הערות חופשיות (פורמט קובץ שהיית מעדיף, מה חסר, מה מפריע)</label>
+<textarea id="free" rows="4"></textarea>
+<p><button class="primary" id="copy">העתק סיכום</button> <span id="msg" class="mut" role="status"></span></p>
+</div>
+</main>
+
+<script>
+const P=[
+["טבעת סוליטר קלאסית","Product photo of a classic round brilliant solitaire engagement ring, 4 prongs, thin plain 18K yellow gold band, three-quarter top view, single ring only, no hand, pure white seamless background, even soft studio lighting, sharp focus"],
+["סוליטר עם כתפיים מוגבהות","Product photo of a cathedral-shoulder solitaire engagement ring with an oval diamond, 6 prongs, platinum band, three-quarter view, single ring only, no hand, pure white background, even soft lighting"],
+["הילה","Product photo of a halo engagement ring, cushion cut center stone surrounded by small round diamonds, rose gold thin band, three-quarter view, single ring only, white background, even soft lighting"],
+["חישוק משובץ","Product photo of a pavé diamond band engagement ring with a round center stone, white gold, small stones along half of the band, three-quarter view, single ring only, white background, even lighting"],
+["שיבוץ כוס (Bezel)","Product photo of a modern bezel-set emerald cut diamond ring, yellow gold, plain polished band, three-quarter view, single ring only, white background, even soft lighting"],
+["חישוק מפותל","Product photo of a twisted rope shank engagement ring with a pear shaped diamond in a 3-prong setting, rose gold, three-quarter view, single ring only, white background, even lighting"],
+["טבעת נישואין עם כתר מיוחד","Product photo of a men's wedding band with a decorative raised crown motif on top, brushed yellow gold, three-quarter view, single ring only, white background, even lighting"],
+["לא טבעת (מבחן רוחב)","Product photo of a pendant necklace with a teardrop diamond in a gold bezel, laid flat, front view, single piece only, white background, even soft lighting"]
+];
+const C=["התאמה לצורה הכללית","דיוק השיניים והשיבוץ","סימטריה","אטימות הרשת (ללא חורים)","מידת החישוק ועוביו"];
+const $=s=>document.querySelector(s);
+const pr=$('#prompts'),fm=$('#forms');
+let S={};try{S=JSON.parse(localStorage.getItem('lumina-kit')||'{}')}catch(e){}
+const save=()=>{try{localStorage.setItem('lumina-kit',JSON.stringify(S))}catch(e){}};
+P.forEach(([t,p],i)=>{
+ const d=document.createElement('div');d.className='card';
+ d.innerHTML=`<b>${i+1}. ${t}</b><span class="prompt">${p}</span><button data-i="${i}">העתק פרומפט</button>`;
+ pr.appendChild(d);
+ d.querySelector('button').onclick=async e=>{try{await navigator.clipboard.writeText(p);e.target.textContent='הועתק'}catch(x){e.target.textContent='העתק ידנית'};setTimeout(()=>e.target.textContent='העתק פרומפט',1500)};
+ const f=document.createElement('div');f.className='card';
+ f.innerHTML=`<b>${i+1}. ${t}</b><div class="row">`+C.map((c,j)=>`<div><label for="s${i}_${j}">${c} (1 גרוע, 5 מצוין)</label><select id="s${i}_${j}" data-k="s${i}_${j}"><option value="">-</option>${[1,2,3,4,5].map(n=>`<option>${n}</option>`).join('')}</select></div>`).join('')+
+ `<div><label for="m${i}">זמן שהיה נחסך (דקות)</label><input id="m${i}" type="number" min="0" data-k="m${i}"></div></div>
+ <label for="n${i}">הערות</label><textarea id="n${i}" rows="2" data-k="n${i}"></textarea>`;
+ fm.appendChild(f);
+});
+document.querySelectorAll('[data-k]').forEach(el=>{el.value=S[el.dataset.k]||'';el.addEventListener('input',()=>{S[el.dataset.k]=el.value;save()})});
+['overall','pay','free'].forEach(id=>{const el=$('#'+id);el.value=S[id]||'';el.addEventListener('input',()=>{S[id]=el.value;save()})});
+$('#copy').onclick=async()=>{
+ let t='סיכום בדיקת היתכנות\n\n';
+ P.forEach(([n],i)=>{t+=`${i+1}. ${n}: `+C.map((c,j)=>`${c} ${S['s'+i+'_'+j]||'-'}`).join(', ')+`, דקות שנחסכו ${S['m'+i]||'-'}${S['n'+i]?', הערה: '+S['n'+i]:''}\n`});
+ t+=`\nחיסכון כללי: ${S.overall||'-'}\nמוכן לשלם בחודש: ${S.pay||'-'}$\nהערות: ${S.free||'-'}`;
+ try{await navigator.clipboard.writeText(t);$('#msg').textContent='הועתק, אפשר להדביק בוואטסאפ'}catch(e){$('#msg').textContent='ההעתקה נחסמה, סמנו ידנית'}
+};
+</script>
+</body>
+</html>

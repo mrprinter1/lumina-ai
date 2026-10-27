@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>העיצוב שלך</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.css">
+<link rel="stylesheet" href="/style.css">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/SplitText.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" defer></script>
+</head>
+<body>
+<div class="curtain" id="curtain"></div>
+<main class="client-page">
+  <div class="client-hero" id="hero" data-spot>
+    <div class="client-brand"><img id="logo" alt="" hidden><span id="business" class="shine"></span></div>
+    <figure class="niche" id="print" hidden><div class="niche-inner"><img id="image" alt="הדמיית הטבעת שלך"></div></figure>
+    <h1 id="greeting" data-split></h1>
+    <p class="scroll-cue" id="cue" hidden>הפרטים והאישור למטה</p>
+  </div>
+
+  <div class="client-body">
+    <section id="specsSection" class="reveal" hidden><h2>פרטי הטבעת</h2><dl class="specs" id="specs"></dl></section>
+    <section id="priceSection" class="reveal" hidden>
+      <h2>מחיר</h2>
+      <p class="price-total shine" id="total"></p>
+      <dl class="specs" id="price"></dl>
+    </section>
+    <section id="approveSection" class="reveal" hidden>
+      <h2>אישור העיצוב</h2>
+      <p class="hint">האישור נשמר יחד עם השם, החתימה, התאריך והמחיר שמוצג כאן.</p>
+      <form id="approveForm">
+        <label>שם מלא<input name="name" required minlength="2" autocomplete="name"></label>
+        <span class="label">חתימה</span>
+        <canvas id="pad" class="sign-pad" width="600" height="200" aria-label="משטח חתימה"></canvas>
+        <button type="button" class="link" id="clear">ניקוי החתימה</button>
+        <p class="error" id="error" role="alert"></p>
+        <div class="actions"><button class="btn primary" type="submit" id="approveBtn">אישור העיצוב</button></div>
+      </form>
+    </section>
+    <section id="approvedSection" hidden>
+      <div class="approved"><b>העיצוב אושר</b><span id="approvedText"></span></div>
+    </section>
+    <section class="reveal"><h2>סטטוס ההזמנה</h2><ol class="timeline" id="timeline"></ol></section>
+  </div>
+  <p class="client-foot" id="foot"></p>
+</main>
+<script src="/sign.js" defer></script>
+<script src="/fx.js" defer></script>
+<script>
+addEventListener("DOMContentLoaded", () => {
+  const $ = (s) => document.querySelector(s);
+  const token = location.pathname.split("/").pop();
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const money = (v, cur) => `${Math.round(v).toLocaleString("he-IL")} ${cur}`;
+  const pad = SignaturePad($("#pad"));
+  $("#clear").onclick = () => pad.clear();
+  if (!FX.animate) document.documentElement.classList.add("no-motion");
+  FX.smoothScroll();
+  FX.spotlight();
+  FX.magnet($("#approveBtn"));
+  let shownTotal = false;
+
+  function render(c) {
+    const b = c.business;
+    $("#business").textContent = b.name || "";
+    document.title = b.name ? `העיצוב שלך – ${b.name}` : "העיצוב שלך";
+    if (b.has_logo) { $("#logo").src = "/brand/logo"; $("#logo").hidden = false; }
+    if (c.image && $("#image").getAttribute("src") !== c.image) { $("#image").src = c.image; $("#print").hidden = false; }
+    $("#greeting").textContent = c.client_name ? `${c.client_name}, זו הטבעת שעיצבנו יחד` : "זו הטבעת שעיצבנו יחד";
+
+    $("#specsSection").hidden = !c.specs;
+    if (c.specs) $("#specs").innerHTML = c.specs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+    $("#priceSection").hidden = !c.price;
+    if (c.price) {
+      const p = c.price;
+      $("#total").textContent = money(shownTotal ? p.total : 0, p.currency);
+      $("#total").dataset.total = p.total;
+      $("#total").dataset.cur = p.currency;
+      $("#price").innerHTML = p.deposit
+        ? `<dt>מקדמה ששולמה</dt><dd>${money(p.deposit, p.currency)}</dd><dt>יתרה</dt><dd>${money(p.balance, p.currency)}</dd>` : "";
+    }
+
+    const idx = c.stages.findIndex(([k]) => k === c.stage);
+    $("#timeline").innerHTML = c.stages.filter(([k]) => k !== "design").map(([k, v]) => {
+      const i = c.stages.findIndex(([x]) => x === k);
+      return `<li class="${i < idx ? "done" : i === idx ? "now" : ""}">${esc(v)}</li>`;
+    }).join("");
+
+    $("#approveSection").hidden = !!c.approval;
+    $("#approvedSection").hidden = !c.approval;
+    if (c.approval) {
+      const when = new Date(c.approval.at * 1000).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
+      $("#approvedText").textContent = `${c.approval.name}, ${when}`;
+    } else if (c.client_name) {
+      $("#approveForm").name.value ||= c.client_name;
+    }
+    $("#cue").hidden = !(c.specs || c.price || !c.approval);
+    $("#foot").textContent = b.phone ? `שאלות? ${b.name || "הסטודיו"}: ${b.phone}` : "";
+  }
+
+  function countTotalWhenSeen() {
+    const el = $("#total");
+    const go = () => { shownTotal = true; FX.countUp(el, Number(el.dataset.total), (v) => money(v, el.dataset.cur)); };
+    if (!el.dataset.total) return;
+    if (!FX.animate || !window.ScrollTrigger) return go();
+    ScrollTrigger.create({ trigger: el, start: "top 90%", once: true, onEnter: go });
+  }
+
+  async function load() {
+    const r = await fetch(`/api/client/${encodeURIComponent(token)}`);
+    if (!r.ok) {
+      $("#greeting").textContent = "הקישור לא נמצא או שכבר אינו פעיל. כדאי לפנות לתכשיטן.";
+      FX.lightsOn({ curtain: $("#curtain"), words: [$("#greeting")] });
+      return;
+    }
+    render(await r.json());
+    const img = $("#image");
+    const start = () => {
+      FX.lightsOn({ curtain: $("#curtain"), words: [$("#greeting")], rest: [$(".client-brand"), $("#cue")].filter((e) => !e.hidden) });
+      FX.unveil($("#print"));
+      FX.onScrollReveal(".client-body .reveal:not([hidden])");
+      countTotalWhenSeen();
+    };
+    if (img.getAttribute("src") && !img.complete) img.addEventListener("load", start, { once: true });
+    else start();
+  }
+
+  $("#approveForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (pad.isEmpty()) return ($("#error").textContent = "צריך לחתום במסגרת.");
+    $("#error").textContent = "";
+    const r = await fetch(`/api/client/${encodeURIComponent(token)}/approve`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: e.target.name.value, signature: pad.toDataURL() }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) return ($("#error").textContent = typeof body.detail === "string" ? body.detail : "האישור לא נשמר. אפשר לנסות שוב.");
+    render(body);
+    FX.celebrate($("#approvedSection"));
+    FX.rise($("#approvedSection"), { y: 14 });
+  });
+  load();
+});
+</script>
+</body>
+</html>

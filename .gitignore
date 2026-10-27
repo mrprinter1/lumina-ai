@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+data/
+.env
+.DS_Store
+experiments/
+.venv/
+.env
+__pycache__/
+.DS_Store
+data/

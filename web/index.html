@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumina – סטודיו</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.css">
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/SplitText.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" defer></script>
+</head>
+<body>
+<div class="curtain" id="curtain"></div>
+<header class="topbar">
+  <a href="#studio" class="wordmark"><img id="brandLogo" alt="" hidden><span id="brandName" class="shine">Lumina</span></a>
+  <nav>
+    <a href="#studio" data-view="studio">סטודיו</a>
+    <a href="#orders" data-view="orders">הזמנות</a>
+    <a href="#settings" data-view="settings">הגדרות</a>
+  </nav>
+  <span id="providers" class="provider" hidden></span>
+</header>
+
+<!-- STUDIO -->
+<section id="view-studio" class="view studio">
+  <div class="stage" id="stage" data-spot>
+    <div class="hero" id="stageEmpty">
+      <svg class="hero-ring" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="draw" cx="60" cy="72" r="34"/>
+        <path class="draw" d="M46 36 60 20 74 36 60 48Z"/>
+        <path class="draw" d="M46 36h28M53 36l7 12 7-12"/>
+      </svg>
+      <h1 data-split>כל טבעת מתחילה בשיחה</h1>
+      <p>בוחרים יחד עם הלקוח, רואים את הטבעת תוך שניות, ויוצאים עם קובץ מוכן ליציקה.</p>
+    </div>
+    <figure class="niche" id="stagePrint" hidden>
+      <div class="niche-inner"><img id="stageImage" alt="הדמיית הטבעת"></div>
+    </figure>
+    <model-viewer id="viewer" hidden camera-controls auto-rotate shadow-intensity="0.8" exposure="1.15"
+      environment-image="neutral" alt="מודל תלת-ממד של הטבעת"></model-viewer>
+    <div class="loader" id="stageWorking" hidden>
+      <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="38" opacity=".25"/><circle class="orbit" cx="60" cy="60" r="38"/><path class="glint" d="M60 14l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/></svg>
+      <span id="stageStep"></span>
+    </div>
+    <div class="stage-switch" id="stageSwitch" hidden role="group" aria-label="תצוגה">
+      <button type="button" data-show="image" aria-pressed="true">הדמיה</button>
+      <button type="button" data-show="stoneless" aria-pressed="false">בלי אבן</button>
+      <button type="button" data-show="model" aria-pressed="false">תלת-ממד</button>
+    </div>
+    <p class="stage-caption" id="stageCaption"></p>
+  </div>
+
+  <div class="panel">
+    <ol class="steps" id="steps">
+      <li><button type="button" data-step="design" aria-current="step">עיצוב</button></li>
+      <li><button type="button" data-step="price">מחיר וקובץ</button></li>
+      <li><button type="button" data-step="approve">אישור הלקוח</button></li>
+    </ol>
+    <p class="notice" id="notice" role="status"></p>
+
+    <!-- step 1 -->
+    <div class="step" id="step-design">
+      <h2 class="step-title" data-split>העיצוב</h2>
+      <fieldset class="client">
+        <legend>לקוח</legend>
+        <div class="two">
+          <label>שם<input id="clientName" autocomplete="off"></label>
+          <label>טלפון<input id="clientPhone" type="tel" autocomplete="off" dir="ltr"></label>
+        </div>
+      </fieldset>
+      <div id="optionGroups"></div>
+      <label class="size">מידת טבעת <span class="hint" id="sizeSystemLabel"></span>
+        <input id="ringSize" type="number" step="0.5" min="1" value="54" inputmode="decimal">
+      </label>
+      <label>בקשות מיוחדות
+        <textarea id="freeText" rows="2" placeholder="למשל: כתר מעוטר בעלים, חריטה עדינה על החישוק"></textarea>
+      </label>
+      <div class="actions">
+        <button id="generate" class="btn primary">יצירת הדמיה</button>
+        <button id="newDesign" class="btn quiet" hidden>עיצוב חדש</button>
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div class="step" id="step-price" hidden>
+      <h2 class="step-title" data-split>מחיר וקובץ</h2>
+      <p class="lede" id="priceIntro">כדי לחשב משקל ומחיר, המערכת מכינה את קובץ הייצור מתוך ההדמיה.</p>
+      <button id="produce" class="btn primary">הכנת קובץ ומחיר</button>
+      <div id="priceBlock" hidden>
+        <dl class="ledger" id="ledger"></dl>
+        <div class="ledger-total"><span>מחיר ללקוח</span><b id="totalPrice" class="shine">—</b></div>
+        <div class="two">
+          <label>מחיר האבן<input id="stonePrice" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>מחיר סופי ידני (לא חובה)<input id="priceOverride" type="number" min="0" step="1" inputmode="numeric"></label>
+        </div>
+        <div class="files">
+          <a id="downloadStl" class="btn">הורדת STL</a>
+          <a id="specLink" class="btn quiet" target="_blank" rel="noopener">כרטיס עבודה</a>
+        </div>
+        <ul class="warnings" id="warnings"></ul>
+      </div>
+      <details class="manual">
+        <summary>העלאת קובץ GLB ידנית</summary>
+        <input id="glbFile" type="file" accept=".glb">
+        <button id="uploadGlb" class="btn quiet">העלאה ועיבוד</button>
+      </details>
+    </div>
+
+    <!-- step 3 -->
+    <div class="step" id="step-approve" hidden>
+      <h2 class="step-title" data-split>אישור הלקוח</h2>
+      <div id="approvalDone" class="approved" hidden></div>
+      <div id="approvalOpen">
+        <p class="lede">הלקוח יכול לאשר כאן ולחתום על המסך, או לקבל קישור ולאשר מהטלפון.</p>
+        <div class="actions">
+          <button id="signHere" class="btn primary">אישור וחתימה במקום</button>
+          <button id="shareLink" class="btn">שליחת קישור ללקוח</button>
+        </div>
+      </div>
+      <div class="order-box">
+        <label>שלב ההזמנה<select id="orderStage"></select></label>
+        <div class="two">
+          <label>מקדמה ששולמה<input id="deposit" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>הערות פנימיות<input id="notes"></label>
+        </div>
+        <button id="shareAgain" class="btn quiet" hidden>שליחת הקישור שוב</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ORDERS -->
+<section id="view-orders" class="view sheet" hidden>
+  <div class="sheet-head">
+    <h1 data-split>הזמנות</h1>
+    <select id="stageFilter" aria-label="סינון לפי שלב"><option value="">כל השלבים</option></select>
+  </div>
+  <div id="orderList" class="orders"></div>
+</section>
+
+<!-- SETTINGS -->
+<section id="view-settings" class="view sheet" hidden>
+  <div class="sheet-head"><h1 data-split>הגדרות</h1></div>
+  <form id="settingsForm" class="settings">
+    <fieldset>
+      <legend>העסק</legend>
+      <p class="hint">השם והלוגו מופיעים ללקוח בקישור ובכרטיס העבודה.</p>
+      <div class="two">
+        <label>שם העסק<input name="business_name"></label>
+        <label>טלפון העסק<input name="business_phone" type="tel" dir="ltr"></label>
+      </div>
+      <label>לוגו (PNG או JPG)<input id="logoFile" type="file" accept="image/png,image/jpeg"></label>
+    </fieldset>
+    <fieldset>
+      <legend>שיתוף עם הלקוח</legend>
+      <label>כתובת האתר הציבורית<input name="public_url" dir="ltr" placeholder="https://studio.example.com"></label>
+      <p class="hint">הקישור שהלקוח מקבל נבנה מהכתובת הזו. כל עוד האתר רץ רק על המחשב הזה, הלקוח לא יוכל לפתוח אותו.</p>
+      <label>נוסח ההודעה<textarea name="share_message" rows="3"></textarea></label>
+      <p class="hint">אפשר להשתמש ב-{name} לשם הלקוח, {business} לשם העסק ו-{link} לקישור.</p>
+      <label class="check"><input type="checkbox" name="client_sees_specs"> הלקוח רואה את פרטי הטבעת</label>
+      <label class="check"><input type="checkbox" name="client_sees_price"> הלקוח רואה מחיר, מקדמה ויתרה</label>
+      <label class="check"><input type="checkbox" name="client_sees_weight"> הלקוח רואה משקל זהב משוער</label>
+    </fieldset>
+    <fieldset>
+      <legend>תמחור</legend>
+      <div class="three">
+        <label>מטבע<input name="currency" maxlength="4"></label>
+        <label>גרם זהב 14K<input name="gold14" type="number" min="0" step="0.01"></label>
+        <label>גרם זהב 18K<input name="gold18" type="number" min="0" step="0.01"></label>
+      </div>
+      <div class="two">
+        <label>עלות עבודה לטבעת<input name="labor_cost" type="number" min="0" step="1"></label>
+        <label>רווח באחוזים<input name="margin_percent" type="number" min="0" step="1"></label>
+      </div>
+      <p class="hint">מחיר ללקוח = (זהב + אבן + עבודה) × (1 + רווח). אפשר תמיד לקבוע מחיר ידני להזמנה.</p>
+    </fieldset>
+    <fieldset>
+      <legend>ייצור</legend>
+      <div class="two">
+        <label>שיטת מידות<select name="size_system" id="sizeSystem"></select></label>
+        <label>מקדם התכווצות שעווה<input name="wax_shrink" type="number" min="0.9" max="1.1" step="0.001"></label>
+      </div>
+    </fieldset>
+    <div class="actions"><button class="btn primary" type="submit">שמירת ההגדרות</button><span id="settingsSaved" class="hint" role="status"></span></div>
+  </form>
+</section>
+
+<!-- dialogs -->
+<dialog id="signDialog" class="sheet-dialog" data-lenis-prevent>
+  <form method="dialog" id="signForm">
+    <h2>אישור העיצוב</h2>
+    <p class="hint" id="signSummary"></p>
+    <label>שם מלא<input name="name" required minlength="2" autocomplete="name"></label>
+    <span class="label">חתימה</span>
+    <canvas id="signPad" class="sign-pad" width="600" height="200" aria-label="משטח חתימה"></canvas>
+    <button type="button" class="link" id="clearSign">ניקוי החתימה</button>
+    <p class="error" id="signError" role="alert"></p>
+    <div class="actions"><button type="submit" class="btn primary" value="ok">אישור העיצוב</button><button type="button" class="btn quiet" id="signCancel">ביטול</button></div>
+  </form>
+</dialog>
+
+<dialog id="shareDialog" class="sheet-dialog" data-lenis-prevent>
+  <h2>שליחה ללקוח</h2>
+  <p class="warn" id="shareLocal" hidden>האתר רץ כרגע רק על המחשב הזה, ולכן הקישור לא ייפתח אצל הלקוח. אפשר לנסות אותו כאן במחשב.</p>
+  <label>הקישור<input id="shareUrl" readonly dir="ltr"></label>
+  <label>ההודעה<textarea id="shareText" rows="4" readonly></textarea></label>
+  <div class="actions">
+    <a id="shareWhatsapp" class="btn primary" target="_blank" rel="noopener">שליחה בוואטסאפ</a>
+    <button type="button" class="btn" id="copyLink">העתקת הקישור</button>
+    <a id="openLink" class="btn quiet" target="_blank" rel="noopener">פתיחת העמוד</a>
+  </div>
+  <form method="dialog"><button class="link">סגירה</button></form>
+</dialog>
+
+<script src="sign.js" defer></script>
+<script src="fx.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
