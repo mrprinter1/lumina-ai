@@ -19,7 +19,6 @@ DEFAULT_SETTINGS = {
     # client sharing
     "public_url": "",  # e.g. https://studio.example.com - share links are built from it
     "share_message": "שלום {name}, זה העיצוב של הטבעת שלך מ{business}. אפשר לראות את הפרטים ולאשר כאן: {link}",
-    "client_sees_price": True,
     "client_sees_specs": True,
     "client_sees_weight": False,
     # pricing / production
@@ -65,16 +64,22 @@ ORDER_STAGES = [
 STAGE_IDS = [k for k, _ in ORDER_STAGES]
 
 
-def create_design(selections, free_text, ring_size, client=None):
+def _new_order():
+    # published_price: what the client sees on the link, set only when the jeweler sends it
+    return {"stage": "design", "stone_price": 0, "price_override": None, "deposit": 0, "notes": "",
+            "published_price": None}
+
+
+def create_design(selections, free_text, ring_size, client=None, engraving=""):
     design_id = uuid.uuid4().hex[:12]
     d = design_dir(design_id)
     d.mkdir(parents=True)
     design = {
         "id": design_id, "created_at": time.time(), "selections": selections, "free_text": free_text,
-        "ring_size": ring_size, "status": "queued", "step": "", "error": None,
-        "images": [], "image": None, "stoneless_image": None, "spec": None, "glb_source": None,
+        "engraving": engraving, "ring_size": ring_size, "status": "queued", "step": "", "error": None,
+        "progress": None, "images": [], "image": None, "stoneless_image": None, "spec": None, "glb_source": None,
         "client": {"name": "", "phone": "", **(client or {})},
-        "order": {"stage": "design", "stone_price": 0, "price_override": None, "deposit": 0, "notes": ""},
+        "order": _new_order(),
         "share_token": None, "approval": None,
     }
     save_design(design)
@@ -89,9 +94,12 @@ def load_design(design_id):
         design = json.load(f)
     # designs saved before orders/sharing existed
     design.setdefault("client", {"name": "", "phone": ""})
-    design.setdefault("order", {"stage": "design", "stone_price": 0, "price_override": None, "deposit": 0, "notes": ""})
+    design.setdefault("order", _new_order())
+    design["order"].setdefault("published_price", None)
     design.setdefault("share_token", None)
     design.setdefault("approval", None)
+    design.setdefault("engraving", "")
+    design.setdefault("progress", None)
     return design
 
 
@@ -148,6 +156,25 @@ def load_settings():
         with open(path, encoding="utf-8") as f:
             settings.update(json.load(f))
     return settings
+
+
+def load_timings():
+    """Measured step durations (seconds) per step+provider, used to estimate progress."""
+    path = config.DATA_DIR / "timings.json"
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def record_timing(key, seconds):
+    with _lock:
+        timings = load_timings()
+        old = timings.get(key)
+        # moving average: follows provider speed changes without jumping on one slow run
+        timings[key] = round(seconds if old is None else old * 0.6 + seconds * 0.4, 1)
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _write_json(config.DATA_DIR / "timings.json", timings)
 
 
 def save_settings(settings):

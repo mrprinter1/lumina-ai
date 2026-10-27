@@ -1,6 +1,7 @@
 """Image generation + editing providers. Each returns PNG bytes."""
 import base64
 import io
+import time
 
 import httpx
 from PIL import Image, ImageDraw
@@ -26,9 +27,11 @@ class MockImages:
         return buf.getvalue()
 
     def generate(self, prompt):
+        time.sleep(config.MOCK_DELAY)
         return self._draw("set OPENAI_API_KEY for real images", True)
 
     def edit(self, image_png, prompt):
+        time.sleep(config.MOCK_DELAY)
         return self._draw("stone removed", False)
 
 

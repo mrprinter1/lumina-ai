@@ -20,6 +20,15 @@ FILE_RE = re.compile(r"^(image_\d+\.png|stoneless\.png|ring\.stl|ring_view\.glb|
 BUSY = ("queued", "working")
 
 
+@app.on_event("startup")
+def recover_interrupted_jobs():
+    # jobs run in this process; after a restart nothing will finish them, so say so instead of loading forever
+    for d in store.list_designs(limit=10_000):
+        if d["status"] in BUSY:
+            store.update_design(d["id"], status="error", step="",
+                                error="השרת הופעל מחדש באמצע העבודה. לחצו שוב כדי להמשיך.")
+
+
 @app.middleware("http")
 async def revalidate_static(request, call_next):
     # The UI changes often; make browsers revalidate pages and scripts instead of using stale copies.
@@ -32,6 +41,7 @@ async def revalidate_static(request, call_next):
 class NewDesign(BaseModel):
     selections: dict = {}
     free_text: str = ""
+    engraving: str = ""
     ring_size: float
     client: dict = {}
 
@@ -44,6 +54,10 @@ class OrderUpdate(BaseModel):
     clear_price_override: bool = False
     deposit: float = None
     notes: str = None
+
+
+class PricePublish(BaseModel):
+    publish: bool = True
 
 
 class Approval(BaseModel):
@@ -61,6 +75,7 @@ def _get(design_id):
 def _public(design):
     out = dict(design)
     out["quote"] = jobs.quote(design, store.load_settings())
+    out["server_now"] = time.time()  # lets the browser extrapolate progress against its own clock
     return out
 
 
@@ -126,7 +141,7 @@ def create(body: NewDesign):
     except ValueError as e:
         raise HTTPException(400, str(e))
     client = {k: str(body.client.get(k, ""))[:120] for k in ("name", "phone")}
-    design = store.create_design(sel, body.free_text[:1000], body.ring_size, client)
+    design = store.create_design(sel, body.free_text[:1000], body.ring_size, client, body.engraving.strip()[:60])
     jobs.start_image(design["id"])
     return _public(store.load_design(design["id"]))
 
@@ -144,6 +159,7 @@ def get_one(design_id: str):
 class Regenerate(BaseModel):
     selections: dict = None
     free_text: str = None
+    engraving: str = None
     ring_size: float = None
 
 
@@ -162,6 +178,8 @@ def regenerate(design_id: str, body: Regenerate = None):
             raise HTTPException(400, str(e))
     if body and body.free_text is not None:
         changes["free_text"] = body.free_text[:1000]
+    if body and body.engraving is not None:
+        changes["engraving"] = body.engraving.strip()[:60]
     if body and body.ring_size is not None:
         changes["ring_size"] = body.ring_size
     if changes:
@@ -201,6 +219,24 @@ def update_order(design_id: str, body: OrderUpdate):
     if body.notes is not None:
         order["notes"] = body.notes[:2000]
     store.update_design(design_id, order=order, client=client)
+    return _public(_get(design_id))
+
+
+@app.post("/api/designs/{design_id}/price")
+def publish_price(design_id: str, body: PricePublish):
+    """Send the jeweler's price to the client link, or take it back. Until sent, the client sees no price."""
+    d = _get(design_id)
+    order = dict(d["order"])
+    if body.publish:
+        q = jobs.quote(d, store.load_settings())
+        if not q["final_price"]:
+            raise HTTPException(409, "צריך לקבוע מחיר לפני השליחה ללקוח")
+        order["published_price"] = {"total": q["final_price"], "currency": q["currency"], "at": time.time()}
+    else:
+        if d.get("approval"):
+            raise HTTPException(409, "הלקוח כבר אישר את המחיר")
+        order["published_price"] = None
+    store.update_design(design_id, order=order)
     return _public(_get(design_id))
 
 
@@ -274,18 +310,23 @@ def client_view(token: str):
         ]
         if d["free_text"]:
             specs.append(["בקשות מיוחדות", d["free_text"]])
+        if d.get("engraving"):
+            specs.append(["חריטה", d["engraving"]])
         if s["client_sees_weight"] and q["weight_g"]:
             specs.append(["משקל זהב משוער", "%s גרם" % q["weight_g"]])
+    # the client sees only a price the jeweler sent, never the working figures
     price = None
-    if s["client_sees_price"] and q["final_price"]:
-        price = {"total": q["final_price"], "deposit": q["deposit"], "balance": q["balance"],
-                 "currency": q["currency"]}
+    pub = d["order"].get("published_price")
+    if pub:
+        deposit = float(d["order"].get("deposit") or 0)
+        price = {"total": pub["total"], "deposit": deposit or None, "balance": pub["total"] - deposit,
+                 "currency": pub["currency"]}
     approval = d.get("approval")
     return {
         "business": {"name": s["business_name"], "phone": s["business_phone"], "has_logo": s["has_logo"]},
         "client_name": d["client"]["name"],
         "image": "/c/%s/image?v=%s" % (token, urlquote(d["image"] or "")) if d["image"] else None,
-        "specs": specs, "price": price,
+        "specs": specs, "price": price, "awaiting_price": not pub and not approval,
         "stage": d["order"]["stage"], "stages": store.ORDER_STAGES,
         "approval": {"name": approval["name"], "at": approval["at"]} if approval else None,
     }
@@ -306,6 +347,9 @@ def _record_approval(d, body, request, channel):
         raise HTTPException(409, "העיצוב כבר אושר")
     if not d["image"] or d["status"] in BUSY:
         raise HTTPException(409, "העיצוב עדיין לא מוכן לאישור")
+    pub = d["order"].get("published_price")
+    if channel == "link" and not pub:
+        raise HTTPException(409, "המחיר עוד לא נשלח. אפשר לאשר אחרי שתקבלו הצעת מחיר")
     name = body.name.strip()[:120]
     if len(name) < 2:
         raise HTTPException(400, "נא לכתוב שם מלא")
@@ -317,8 +361,9 @@ def _record_approval(d, body, request, channel):
         raise HTTPException(400, "חתימה לא תקינה")
     (store.design_dir(d["id"]) / "signature.png").write_bytes(sig)
     q = jobs.quote(d, store.load_settings())
-    approval = {"name": name, "at": time.time(), "image": d["image"], "price": q["final_price"],
-                "currency": q["currency"], "channel": channel,
+    approval = {"name": name, "at": time.time(), "image": d["image"],
+                "price": pub["total"] if pub else q["final_price"],
+                "currency": pub["currency"] if pub else q["currency"], "channel": channel,
                 "ip": request.client.host if request.client else None,
                 "user_agent": request.headers.get("user-agent", "")[:300]}
     store.update_design(d["id"], approval=approval, order=dict(d["order"], stage="approved"))
@@ -370,6 +415,7 @@ def spec_page(design_id: str):
         row("קוטר אבן משוער (מ\"מ)", q["stone_mm"]),
         row("שיבוץ", catalog.he("setting", sel["setting"])),
         row("חישוק", catalog.he("band", sel["band"])),
+        row("חריטה (לביצוע ידני, לא בקובץ)", d.get("engraving")),
         row("מידה", "%s (%s)" % (d["ring_size"], sizes.SYSTEMS.get(s.get("size_system"), ""))),
         row("קוטר פנימי (מ\"מ)", s["inner_diameter_after_scaling_mm"]),
         row("מידות כלליות (מ\"מ)", "%s × %s × %s" % tuple(dims)),
@@ -391,9 +437,9 @@ def spec_page(design_id: str):
     return """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>כרטיס עבודה</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@300;400;600&display=swap" rel="stylesheet">
-<style>body{font:16px/1.6 Assistant,system-ui,sans-serif;margin:0;background:#fff;color:#1f2321}main{max-width:720px;margin:0 auto;padding:28px 16px}
-h1{font:400 34px/1.2 Bellefair,serif;margin:0}.n{color:#6d7370;font-size:14px}
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400&family=Heebo:wght@300;400;500&display=swap" rel="stylesheet">
+<style>body{font:16px/1.6 Heebo,system-ui,sans-serif;margin:0;background:#fff;color:#1f2321}main{max-width:720px;margin:0 auto;padding:28px 16px}
+h1{font:300 34px/1.2 "Frank Ruhl Libre",serif;margin:0}.n{color:#6d7370;font-size:14px}
 img{width:100%%;max-width:340px;border-radius:4px;margin:16px 0}table{width:100%%;border-collapse:collapse;margin:12px 0}
 th,td{text-align:right;padding:7px 4px;border-bottom:1px solid #e4e6e3;vertical-align:top}th{color:#6d7370;font-weight:400;width:45%%}
 .ok{color:#2f6b4f}a.btn{display:inline-block;margin:8px 0 0 8px;padding:8px 14px;border:1px solid #1f3a33;color:#1f3a33;border-radius:4px;text-decoration:none}

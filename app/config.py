@@ -31,3 +31,5 @@ PIAPI_IMAGE_FORMAT = os.getenv("PIAPI_IMAGE_FORMAT", "datauri")  # datauri | raw
 # "auto" = real provider when its key is set, mock otherwise.
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "auto")
 MODEL3D_PROVIDER = os.getenv("MODEL3D_PROVIDER", "auto")
+# Seconds each mock step waits, to rehearse the progress UI without paying for real calls.
+MOCK_DELAY = float(os.getenv("MOCK_DELAY", "0") or 0)

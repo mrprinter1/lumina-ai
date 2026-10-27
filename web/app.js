@@ -8,7 +8,9 @@ async function api(path, opts = {}) {
     const detail = (await r.json().catch(() => ({}))).detail;
     throw new Error(typeof detail === "string" ? detail : r.statusText);
   }
-  return r.json();
+  const body = await r.json();
+  if (body && body.server_now) clockSkew = Date.now() / 1000 - body.server_now;
+  return body;
 }
 const json = (method, body) => ({ method, body: JSON.stringify(body || {}) });
 
@@ -26,10 +28,12 @@ const shapeIcon = (id) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">${SHAPES[id] || ""}</svg>`;
 
 let meta, settings, current = null, pollTimer = null, step = "design", stageView = "image", currentView = null;
+let clockSkew = 0, progressTimer = null, wasBusy = false;
 const selections = {};
 const busy = (d) => d && (d.status === "queued" || d.status === "working");
 const money = (v, cur) => (v || v === 0) && v !== null ? `${Math.round(v).toLocaleString("he-IL")} ${cur}` : "—";
-const fileUrl = (d, name) => `/files/${d.id}/${name}?v=${d.updated_at || 0}`;
+// version files by the job that wrote them, so polling and price edits don't re-download images and models
+const fileUrl = (d, name) => `/files/${d.id}/${name}?v=${Math.round(d.progress?.started_at || d.created_at)}`;
 const labelOf = (cat, id) => (meta.options[cat].items.find((i) => i.id === id) || {}).he || id;
 const stageLabel = (id) => (meta.stages.find(([k]) => k === id) || [id, id])[1];
 
@@ -115,36 +119,112 @@ function setStageView(v) {
 }
 $$("#stageSwitch button").forEach((b) => (b.onclick = () => setStageView(b.dataset.show)));
 
+/* ---------- progress ----------
+   The server stores a plan of steps with expected durations (learned from past runs).
+   The browser extrapolates between polls so the percentage moves smoothly. */
+const activeStep = (d) => (d?.progress?.steps || []).find((s) => s.state === "active");
+
+function stepFraction(s, now) {
+  if (s.state === "done") return 1;
+  if (s.state !== "active" || !s.started_at) return 0;
+  if (s.pct != null) return Math.min(s.pct / 100, 0.99);
+  const x = (now - s.started_at) / s.expected_s;
+  // linear up to 85%, then creeps toward 99% so a slow run never looks frozen or finished
+  return x < 0.85 ? x : 0.85 + 0.14 * (1 - Math.exp(-(x - 0.85) * 2.5));
+}
+
+function progressOf(d) {
+  const steps = d?.progress?.steps;
+  if (!steps || !steps.length) return null;
+  const now = Date.now() / 1000 - clockSkew;
+  let total = 0, done = 0, remaining = 0;
+  for (const s of steps) {
+    const f = stepFraction(s, now);
+    total += s.expected_s;
+    done += f * s.expected_s;
+    if (s.state === "pending") remaining += s.expected_s;
+    if (s.state === "active") remaining += Math.max(s.expected_s - (now - (s.started_at || now)), 0);
+  }
+  return { pct: Math.min(99, Math.floor((done / total) * 100)), remaining, steps, now };
+}
+
+function etaText(sec) {
+  if (sec < 8) return "עוד רגע…";
+  if (sec < 60) return "פחות מדקה";
+  const m = Math.round(sec / 60);
+  return m === 1 ? "בערך דקה" : `בערך ${m} דקות`;
+}
+
+function paintProgress() {
+  const d = current;
+  if (!busy(d)) return;
+  const p = progressOf(d);
+  const a = activeStep(d);
+  $("#stageStep").textContent = (a ? d.step || a.label : "ממתינים בתור") + "…";
+  if (!p) return;
+  $("#stagePct").textContent = p.pct + "%";
+  $("#stageBar").style.width = p.pct + "%";
+  const n = p.steps.length, i = p.steps.findIndex((s) => s.state === "active");
+  $("#stageEta").textContent = (n > 1 && i >= 0 ? `שלב ${i + 1} מתוך ${n} · ` : "") + etaText(p.remaining);
+  $$("#pipeline li").forEach((li, i) => {
+    const s = p.steps[i];
+    if (s) li.querySelector(".p").textContent = s.state === "active" ? Math.floor(stepFraction(s, p.now) * 100) + "%" : "";
+  });
+}
+
+function renderPipeline(d) {
+  const steps = d?.progress?.steps || [];
+  const production = steps.some((s) => s.key === "mesh");
+  const show = !!(d && production && (busy(d) || d.status === "error"));
+  $("#pipeline").hidden = !show;
+  if (!show) return;
+  const sig = steps.map((s) => s.key + s.state).join();
+  if ($("#pipeline").dataset.sig !== sig) {
+    $("#pipeline").dataset.sig = sig;
+    $("#pipeline").innerHTML = steps.map((s) =>
+      `<li class="${s.state}"><span>${escapeHtml(s.label)}</span><span class="p"></span></li>`).join("");
+  }
+}
+
 function renderStage(d) {
   const hasImage = !!(d && d.image);
   const hasModel = !!(d && d.spec);
+  const a = busy(d) ? activeStep(d) : null;
+  // while the file is being built, show what the machine is working from
+  let view = stageView, modelSrc = hasModel ? fileUrl(d, d.spec.view_glb) : null;
+  if (a && a.key === "model3d" && d.stoneless_image) view = "stoneless";
+  if (a && a.key === "mesh" && d.glb_source) { view = "model"; modelSrc = fileUrl(d, "source.glb"); }
   $("#stageEmpty").hidden = hasImage || busy(d);
-  $("#stageSwitch").hidden = !(d && (d.stoneless_image || hasModel));
+  $("#stageSwitch").hidden = busy(d) || !(d && (d.stoneless_image || hasModel));
   $$("#stageSwitch button").forEach((b) => {
     b.hidden = (b.dataset.show === "stoneless" && !d?.stoneless_image) || (b.dataset.show === "model" && !hasModel);
   });
-  if (stageView === "model" && !hasModel) stageView = "image";
-  if (stageView === "stoneless" && !d?.stoneless_image) stageView = "image";
-  const showModel = stageView === "model" && hasModel;
+  if (view === "model" && !modelSrc) view = "image";
+  if (view === "stoneless" && !d?.stoneless_image) view = "image";
+  const showModel = view === "model";
   $("#viewer").hidden = !showModel;
   $("#stagePrint").hidden = !hasImage || showModel;
   if (showModel) {
-    const src = fileUrl(d, d.spec.view_glb);
-    if ($("#viewer").getAttribute("src") !== src) $("#viewer").setAttribute("src", src);
+    if ($("#viewer").getAttribute("src") !== modelSrc) $("#viewer").setAttribute("src", modelSrc);
   } else if (hasImage) {
-    const name = stageView === "stoneless" ? d.stoneless_image : d.image;
+    const name = view === "stoneless" ? d.stoneless_image : d.image;
     const src = fileUrl(d, name);
     const img = $("#stageImage");
-    if (img.dataset.file !== name + d.id) {
-      img.dataset.file = name + d.id;
+    if (img.getAttribute("src") !== src) {
       img.onload = () => FX.unveil($("#stagePrint"));
+      img.src = src;
     }
-    if (img.getAttribute("src") !== src) img.src = src;
   }
   $("#stageWorking").hidden = !busy(d);
-  $("#stage").classList.toggle("working", busy(d) && (hasImage || hasModel));
-  $("#stageStep").textContent = busy(d) ? (d.step || "עובד") + "…" : "";
+  $("#stage").classList.toggle("working", busy(d));
+  $("#stage").classList.toggle("has-content", hasImage || showModel);
+  $("#stagePrint").classList.toggle("scanning", !!(a && a.key !== "image"));
   $("#stageCaption").textContent = d ? caption(d.selections) : "";
+  clearInterval(progressTimer);
+  if (busy(d)) {
+    paintProgress();
+    progressTimer = setInterval(paintProgress, 250);
+  }
 }
 
 function render(d) {
@@ -163,31 +243,57 @@ function render(d) {
   $("#newDesign").hidden = !d;
   $("#optionGroups").inert = approved;
 
-  // step 2
+  // step 2: production file
   const q = d ? d.quote : null;
-  $("#produce").hidden = !d || !!d.spec;
+  const producing = busy(d) && (d.progress?.steps || []).some((s) => s.key === "mesh");
+  $("#produce").hidden = !d || !!d.spec || producing;
   $("#produce").disabled = !d || !d.image || busy(d);
-  $("#priceIntro").hidden = !d || !!d.spec;
-  $("#priceBlock").hidden = !(d && d.spec);
+  $("#produce").textContent = d && d.status === "error" && d.stoneless_image ? "ניסיון חוזר" : "הכנת קובץ ייצור";
+  $("#priceIntro").hidden = !d || !!d.spec || producing;
+  renderPipeline(d);
+  $("#fileReady").hidden = !(d && d.spec);
   if (d && d.spec) {
-    const cur = q.currency;
-    const rows = [
-      ["משקל זהב משוער", q.weight_g ? `${q.weight_g} גרם` : "—"],
-      [`זהב ${q.alloy.split(" ")[0]}`, q.gold_cost ? money(q.gold_cost, cur) : "צריך להגדיר מחיר גרם"],
-      ["אבן", money(q.stone_price, cur)],
-      ["עבודה", money(q.labor_cost, cur)],
-    ];
-    if (q.margin_percent) rows.push(["רווח", `${q.margin_percent}%`]);
-    $("#ledger").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
-    if (q.final_price) FX.countUp($("#totalPrice"), q.final_price, (v) => money(v, cur));
-    else { $("#totalPrice")._value = 0; $("#totalPrice").textContent = "—"; }
     $("#downloadStl").href = `/files/${d.id}/ring.stl`;
     $("#specLink").href = `/designs/${d.id}/spec`;
-    $("#warnings").innerHTML = d.spec.warnings.map((w) => `<li>${w.replace(/</g, "&lt;")}</li>`).join("");
-    if (document.activeElement !== $("#stonePrice")) $("#stonePrice").value = d.order.stone_price || "";
-    if (document.activeElement !== $("#priceOverride")) $("#priceOverride").value = d.order.price_override ?? "";
+    $("#warnings").innerHTML = d.spec.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("");
   }
   $("#uploadGlb").disabled = !d || busy(d);
+
+  // step 2: price. The jeweler sets it; the client sees it only after "send".
+  $("#priceBlock").hidden = !(d && d.image);
+  if (d && d.image) {
+    const cur = q.currency;
+    const rows = [];
+    if (d.spec) {
+      rows.push(["משקל זהב משוער", q.weight_g ? `${q.weight_g} גרם` : "—"]);
+      rows.push([`זהב ${q.alloy.split(" ")[0]}`, q.gold_cost ? money(q.gold_cost, cur) : "צריך להגדיר מחיר לגרם בהגדרות"]);
+    }
+    if (q.stone_price) rows.push(["אבן", money(q.stone_price, cur)]);
+    if (q.labor_cost) rows.push(["עבודה", money(q.labor_cost, cur)]);
+    if (q.margin_percent && q.computed_price) rows.push(["רווח", `${q.margin_percent}%`]);
+    if (q.computed_price) rows.push(["מחיר מחושב", money(q.computed_price, cur)]);
+    $("#ledger").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    $("#ledger").hidden = !rows.length;
+    if (q.final_price) FX.countUp($("#totalPrice"), q.final_price, (v) => money(v, cur));
+    else { $("#totalPrice")._value = 0; $("#totalPrice").textContent = "—"; }
+    $("#priceOverride").placeholder = q.computed_price ? String(q.computed_price) : "";
+    $("#priceHint").textContent = q.computed_price
+      ? "אם לא תקבעו מחיר, יישלח המחיר המחושב."
+      : d.spec ? "כדי לקבל מחיר מחושב, הגדירו מחיר לגרם זהב בהגדרות. אפשר גם לקבוע מחיר ידני."
+        : "המחיר המחושב יופיע אחרי הכנת קובץ הייצור. אפשר לקבוע מחיר כבר עכשיו.";
+    if (document.activeElement !== $("#stonePrice")) $("#stonePrice").value = d.order.stone_price || "";
+    if (document.activeElement !== $("#priceOverride")) $("#priceOverride").value = d.order.price_override ?? "";
+    const pub = q.published;
+    const sentAt = pub ? new Date(pub.at * 1000).toLocaleDateString("he-IL") : "";
+    $("#publishState").className = "publish-state" + (q.published_stale ? " stale" : pub ? " sent" : "");
+    $("#publishState").textContent = !pub ? "הלקוח עדיין לא רואה מחיר."
+      : q.published_stale ? `שיניתם את המחיר אחרי השליחה. הלקוח עדיין רואה ${money(pub.total, pub.currency)}.`
+        : `נשלח ללקוח ב-${sentAt}: ${money(pub.total, pub.currency)}`;
+    $("#publishPrice").textContent = !pub ? "שליחת הצעת המחיר ללקוח" : q.published_stale ? "שליחת המחיר המעודכן" : "שליחת הקישור שוב";
+    $("#publishPrice").disabled = !q.final_price || approved;
+    $("#unpublishPrice").hidden = !pub || approved;
+    $("#stonePrice").disabled = $("#priceOverride").disabled = approved;
+  }
 
   // step 3
   $("#approvalDone").hidden = !approved;
@@ -214,11 +320,27 @@ function render(d) {
   else if (d.image && !d.spec && step === "design") notice("ההדמיה מוכנה. אפשר להמשיך למחיר ולקובץ.");
   else notice("");
 
+  // finished building the file: turn the stage to the 3D model once
+  if (wasBusy && d && !busy(d) && d.spec && step === "price") setStageView("model");
+  wasBusy = busy(d);
+
   clearTimeout(pollTimer);
-  if (busy(d)) pollTimer = setTimeout(async () => {
-    try { render(await api(`/api/designs/${d.id}`)); } catch (e) { notice(e.message, true); }
-  }, 2000);
+  if (busy(d)) pollTimer = setTimeout(() => poll(d.id), 2000);
 }
+
+// keep polling through hiccups (server busy with a mesh, laptop asleep): one failed request must not freeze the screen
+async function poll(id, failures = 0) {
+  if (!current || current.id !== id) return;
+  try {
+    render(await api(`/api/designs/${id}`));
+  } catch (e) {
+    if (failures >= 2) notice("אין חיבור לשרת. בודקים שוב…", true);
+    pollTimer = setTimeout(() => poll(id, failures + 1), Math.min(2000 * 2 ** failures, 15000));
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && current && busy(current)) { clearTimeout(pollTimer); poll(current.id); }
+});
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -231,6 +353,7 @@ function fillForm(d) {
   $("#clientPhone").value = d.client.phone || "";
   $("#ringSize").value = d.ring_size;
   $("#freeText").value = d.free_text || "";
+  $("#engraving").value = d.engraving || "";
 }
 
 async function openDesign(id) {
@@ -252,6 +375,7 @@ async function run(fn) {
 const formBody = () => ({
   selections: { ...selections },
   free_text: $("#freeText").value,
+  engraving: $("#engraving").value,
   ring_size: Number($("#ringSize").value),
 });
 
@@ -270,12 +394,21 @@ $("#newDesign").onclick = () => {
   clearTimeout(pollTimer);
   Object.assign(selections, meta.defaults);
   syncOptions();
-  ["#clientName", "#clientPhone", "#freeText"].forEach((s) => ($(s).value = ""));
+  ["#clientName", "#clientPhone", "#freeText", "#engraving"].forEach((s) => ($(s).value = ""));
   history.replaceState(null, "", "#studio");
   setStep("design");
   render(null);
 };
 $("#produce").onclick = () => current && run(() => api(`/api/designs/${current.id}/produce`, json("POST")));
+$("#publishPrice").onclick = async () => {
+  if (!current) return;
+  try {
+    render(await api(`/api/designs/${current.id}/price`, json("POST", { publish: true })));
+    FX.sparkAt($("#publishPrice"), { count: 10, reach: 30 });
+    openShare();
+  } catch (e) { notice(e.message, true); }
+};
+$("#unpublishPrice").onclick = () => current && run(() => api(`/api/designs/${current.id}/price`, json("POST", { publish: false })));
 
 async function patchOrder(body) {
   if (!current) return;
@@ -387,7 +520,7 @@ function fillSettings() {
   const f = $("#settingsForm");
   for (const k of ["business_name", "business_phone", "public_url", "share_message", "currency", "labor_cost",
     "margin_percent", "wax_shrink", "size_system"]) f[k].value = settings[k] ?? "";
-  for (const k of ["client_sees_specs", "client_sees_price", "client_sees_weight"]) f[k].checked = !!settings[k];
+  for (const k of ["client_sees_specs", "client_sees_weight"]) f[k].checked = !!settings[k];
   f.gold14.value = settings.gold_price_per_gram["14K"] || "";
   f.gold18.value = settings.gold_price_per_gram["18K"] || "";
   $("#settingsSaved").textContent = "";
@@ -402,7 +535,6 @@ $("#settingsForm").addEventListener("submit", async (e) => {
       public_url: f.public_url.value.trim(),
       share_message: f.share_message.value,
       client_sees_specs: f.client_sees_specs.checked,
-      client_sees_price: f.client_sees_price.checked,
       client_sees_weight: f.client_sees_weight.checked,
       currency: f.currency.value || "₪",
       gold_price_per_gram: { "14K": Number(f.gold14.value) || 0, "18K": Number(f.gold18.value) || 0 },
@@ -447,7 +579,9 @@ $("#settingsForm").addEventListener("submit", async (e) => {
   render(null);
   setStep("design", { animate: false });
   route();
-  ["#generate", "#produce", "#signHere"].forEach((s) => FX.magnet($(s)));
+  ["#generate", "#produce", "#signHere", "#publishPrice"].forEach((s) => FX.magnet($(s)));
+  // split headings only after the display font is in, or the words get measured in the fallback font
+  await Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]);
   // the one orchestrated moment: lights come on in the vitrine
   const words = [currentView === "studio" && !current ? $("#stageEmpty h1") : null, $("#step-design .step-title")].filter(Boolean);
   FX.lightsOn({ curtain: $("#curtain"), words, rest: [$(".steps"), ...$("#step-design").children].filter((c) => !c.classList.contains("step-title")) });

@@ -7,20 +7,20 @@
 <title>העיצוב שלך</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@300;400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.css">
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500&family=Heebo:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vendor/lenis.css">
 <link rel="stylesheet" href="/style.css">
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/SplitText.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" defer></script>
+<script src="/vendor/gsap.min.js" defer></script>
+<script src="/vendor/ScrollTrigger.min.js" defer></script>
+<script src="/vendor/SplitText.min.js" defer></script>
+<script src="/vendor/lenis.min.js" defer></script>
 </head>
 <body>
 <div class="curtain" id="curtain"></div>
 <main class="client-page">
   <div class="client-hero" id="hero" data-spot>
     <div class="client-brand"><img id="logo" alt="" hidden><span id="business" class="shine"></span></div>
-    <figure class="niche" id="print" hidden><div class="niche-inner"><img id="image" alt="הדמיית הטבעת שלך"></div></figure>
+    <figure class="print" id="print" hidden><img id="image" alt="הדמיית הטבעת שלך"></figure>
     <h1 id="greeting" data-split></h1>
     <p class="scroll-cue" id="cue" hidden>הפרטים והאישור למטה</p>
   </div>
@@ -32,9 +32,13 @@
       <p class="price-total shine" id="total"></p>
       <dl class="specs" id="price"></dl>
     </section>
+    <section id="waitingSection" class="reveal" hidden>
+      <h2>המחיר בדרך</h2>
+      <p class="lede" id="waitingText">נשלח לכם הצעת מחיר בקרוב. אחרי שהיא תגיע, תוכלו לאשר את העיצוב כאן.</p>
+    </section>
     <section id="approveSection" class="reveal" hidden>
       <h2>אישור העיצוב</h2>
-      <p class="hint">האישור נשמר יחד עם השם, החתימה, התאריך והמחיר שמוצג כאן.</p>
+      <p class="hint">האישור נשמר יחד עם השם, החתימה, התאריך והמחיר שמופיע למעלה.</p>
       <form id="approveForm">
         <label>שם מלא<input name="name" required minlength="2" autocomplete="name"></label>
         <span class="label">חתימה</span>
@@ -93,7 +97,9 @@ addEventListener("DOMContentLoaded", () => {
       return `<li class="${i < idx ? "done" : i === idx ? "now" : ""}">${esc(v)}</li>`;
     }).join("");
 
-    $("#approveSection").hidden = !!c.approval;
+    $("#waitingSection").hidden = !c.awaiting_price;
+    if (c.awaiting_price && b.name) $("#waitingText").textContent = `${b.name} ישלחו לכם הצעת מחיר בקרוב. אחרי שהיא תגיע, תוכלו לאשר את העיצוב כאן.`;
+    $("#approveSection").hidden = !!c.approval || c.awaiting_price;
     $("#approvedSection").hidden = !c.approval;
     if (c.approval) {
       const when = new Date(c.approval.at * 1000).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
@@ -122,6 +128,7 @@ addEventListener("DOMContentLoaded", () => {
     }
     render(await r.json());
     const img = $("#image");
+    await Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]);
     const start = () => {
       FX.lightsOn({ curtain: $("#curtain"), words: [$("#greeting")], rest: [$(".client-brand"), $("#cue")].filter((e) => !e.hidden) });
       FX.unveil($("#print"));
@@ -147,6 +154,12 @@ addEventListener("DOMContentLoaded", () => {
     FX.rise($("#approvedSection"), { y: 14 });
   });
   load();
+  // the price may arrive while the page sits in a background tab
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible") return;
+    const r = await fetch(`/api/client/${encodeURIComponent(token)}`).catch(() => null);
+    if (r && r.ok) { render(await r.json()); countTotalWhenSeen(); }
+  });
 });
 </script>
 </body>

@@ -114,7 +114,7 @@ def normalize(selections):
     return sel
 
 
-def client_prompt(sel, free_text=""):
+def client_prompt(sel, free_text="", engraving=""):
     parts = [
         "A %s %s." % (_en("metal", sel["metal"]), _en("piece", sel["piece"])),
         "Center stone: %s %s diamond." % (_en("carat", sel["carat"]), _en("shape", sel["shape"])),
@@ -123,5 +123,8 @@ def client_prompt(sel, free_text=""):
     ]
     if free_text.strip():
         parts.append("Custom details requested by the client: %s." % free_text.strip())
+    if engraving.strip():
+        # shown in the picture only; the 3D model can't carry fine engraving, the jeweler adds it
+        parts.append('Fine engraving on the inside of the band reading "%s".' % engraving.strip())
     parts.append(FRAMING)
     return " ".join(parts)

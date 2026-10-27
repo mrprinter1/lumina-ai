@@ -12,6 +12,11 @@ class Mock3D:
     name = "mock"
 
     def generate(self, image_png, progress=None):
+        steps = int(config.MOCK_DELAY)
+        for i in range(steps):
+            if progress:
+                progress("processing", round(100 * i / steps))
+            time.sleep(1)
         return (config.SAMPLES_DIR / "sample_ring_no_stone.glb").read_bytes()
 
 
@@ -42,13 +47,22 @@ class PiAPI3D:
             data = r.json()["data"]
             status = str(data.get("status", "")).lower()
             if progress:
-                progress(status)
+                progress(status, _percent(data))
             if status == "completed":
                 url = data["output"]["model_file"]
                 return httpx.get(url, timeout=300, follow_redirects=True).content
             if status == "failed":
                 raise RuntimeError("PiAPI task failed: %s" % (data.get("error") or data))
         raise RuntimeError("PiAPI task %s timed out" % task_id)
+
+
+def _percent(data):
+    """PiAPI doesn't document a progress field; use one if the task reports it, else None."""
+    for src in (data, data.get("output") or {}):
+        v = src.get("progress") if isinstance(src, dict) else None
+        if isinstance(v, (int, float)) and 0 < v <= 100:
+            return round(v)
+    return None
 
 
 def get_provider():
