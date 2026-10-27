@@ -198,6 +198,18 @@ def produce(design_id: str):
     return _public(_get(design_id))
 
 
+@app.post("/api/designs/{design_id}/reprocess")
+def reprocess(design_id: str):
+    """Rebuild the STL from the 3D model already received (after a settings change or a processing fix)."""
+    d = _get(design_id)
+    if d["status"] in BUSY:
+        raise HTTPException(409, "already working")
+    if not (store.design_dir(design_id) / "source.glb").exists():
+        raise HTTPException(409, "אין עדיין מודל תלת-ממד לעיבוד")
+    jobs.start_process_uploaded(design_id, source=d.get("glb_source") or "upload")
+    return _public(_get(design_id))
+
+
 @app.patch("/api/designs/{design_id}/order")
 def update_order(design_id: str, body: OrderUpdate):
     d = _get(design_id)

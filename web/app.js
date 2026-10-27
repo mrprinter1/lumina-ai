@@ -252,6 +252,7 @@ function render(d) {
   $("#priceIntro").hidden = !d || !!d.spec || producing;
   renderPipeline(d);
   $("#fileReady").hidden = !(d && d.spec);
+  $("#reprocess").disabled = busy(d);
   if (d && d.spec) {
     $("#downloadStl").href = `/files/${d.id}/ring.stl`;
     $("#specLink").href = `/designs/${d.id}/spec`;
@@ -400,6 +401,8 @@ $("#newDesign").onclick = () => {
   render(null);
 };
 $("#produce").onclick = () => current && run(() => api(`/api/designs/${current.id}/produce`, json("POST")));
+// rebuilds the STL from the model already received: no new API cost
+$("#reprocess").onclick = () => current && run(() => api(`/api/designs/${current.id}/reprocess`, json("POST")));
 $("#publishPrice").onclick = async () => {
   if (!current) return;
   try {

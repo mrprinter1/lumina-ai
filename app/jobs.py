@@ -160,8 +160,8 @@ def start_production(design_id):
     _start(design_id, ["stoneless", "model3d", "mesh"], _api_pool, _production)
 
 
-def start_process_uploaded(design_id):
-    store.update_design(design_id, glb_source="upload")
+def start_process_uploaded(design_id, source="upload"):
+    store.update_design(design_id, glb_source=source)
     _start(design_id, ["mesh"], _mesh_pool, _process)
 
 

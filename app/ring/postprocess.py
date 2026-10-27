@@ -45,6 +45,9 @@ def solidify(mesh, resolution=400):
 
     Voxelizes the surface, closes small gaps, fills the interior and re-meshes.
     Resolution = voxels along the longest side (400 is ~0.05 mm on a ring).
+    Marching cubes on a voxel grid leaves terraces (visible as stripes, and printable in wax);
+    Taubin smoothing removes them without the shrinking plain Laplacian smoothing causes
+    (about -1% volume at 10 iterations; the ring is scaled to the finger size afterwards).
     """
     pitch = float(max(mesh.extents)) / resolution
     surface = np.pad(mesh.voxelized(pitch).matrix, 3)
@@ -54,6 +57,7 @@ def solidify(mesh, resolution=400):
     out = trimesh.Trimesh(verts, faces)
     if out.volume < 0:
         out.invert()
+    trimesh.smoothing.filter_taubin(out, lamb=0.5, nu=-0.53, iterations=10)
     return out
 
 
@@ -303,7 +307,8 @@ def process(glb_path, out_dir, inner_diameter_mm, shrink=1.0, densities=None,
     view.apply_translation(-view.bounds.mean(axis=0))
     view.visual = trimesh.visual.TextureVisuals(material=trimesh.visual.material.PBRMaterial(
         baseColorFactor=list(view_color) + [255], metallicFactor=1.0, roughnessFactor=0.25))
-    view.export(os.path.join(out_dir, view_name))
+    # with vertex normals the viewer shades smoothly; without them every small triangle shows as a flat facet
+    view.export(os.path.join(out_dir, view_name), include_normals=True)
 
     return {
         "stl": stl_name,
