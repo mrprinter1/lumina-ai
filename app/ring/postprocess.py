@@ -229,9 +229,14 @@ def wall_thickness(mesh, samples=4000, seed=0):
     pts, face_idx = trimesh.sample.sample_surface(mesh, samples, seed=seed)
     normals = mesh.face_normals[face_idx]
     origins = pts - normals * 1e-3
-    hits_loc, ray_idx, _ = mesh.ray.intersects_location(origins, -normals, multiple_hits=False)
     dist = np.full(len(pts), np.nan)
-    dist[ray_idx] = np.linalg.norm(hits_loc - origins[ray_idx], axis=1)
+    # Without embree trimesh's ray tester allocates (candidate triangles x rays) at once,
+    # which reaches many GB on a dense ring mesh. Cast in small batches to bound memory.
+    batch = 100
+    for i in range(0, len(pts), batch):
+        o, n = origins[i:i + batch], normals[i:i + batch]
+        hits_loc, ray_idx, _ = mesh.ray.intersects_location(o, -n, multiple_hits=False)
+        dist[i + ray_idx] = np.linalg.norm(hits_loc - o[ray_idx], axis=1)
     return pts, dist
 
 
