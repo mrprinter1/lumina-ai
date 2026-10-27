@@ -61,13 +61,46 @@ def solidify(mesh, resolution=400):
     return out
 
 
+def geometry_only(mesh):
+    """Drop UVs and normals and weld vertices by position.
+
+    Generated GLBs split vertices along texture seams, so a closed surface reads as thousands of
+    loose pieces until the seams are welded.
+    """
+    g = trimesh.Trimesh(mesh.vertices.copy(), mesh.faces.copy(), process=False)
+    g.merge_vertices(merge_tex=True, merge_norm=True)
+    g.update_faces(g.nondegenerate_faces())
+    g.update_faces(g.unique_faces())
+    g.remove_unreferenced_vertices()
+    return g
+
+
+def closed_shells(mesh):
+    """The outward-facing closed shells, unioned into one solid; None if they don't cover the model.
+
+    TRELLIS returns each surface twice: a closed outer shell and an inward-facing copy just inside it
+    (negative volume). The outer shells alone are the ring, with the generator's own smooth surface.
+    """
+    shells = [p for p in mesh.split(only_watertight=True) if p.volume > 0]
+    if not shells:
+        return None
+    solid = shells[0] if len(shells) == 1 else trimesh.boolean.union(shells, engine="manifold")
+    # a shell that misses part of the ring (an open prong, a broken band) must not pass for the whole
+    if not solid.is_watertight or np.any(solid.extents < 0.97 * mesh.extents):
+        return None
+    return solid
+
+
 def prepare(mesh):
     """Return (watertight solid mesh, note about what was done)."""
-    mesh = mesh.copy()
-    mesh.merge_vertices()
+    mesh = geometry_only(mesh)
     if mesh.is_watertight and mesh.body_count == 1:
         trimesh.repair.fix_normals(mesh)
         return mesh, "הקובץ הגיע כגוף סגור."
+    solid = closed_shells(mesh)
+    if solid is not None:
+        return solid, "הקובץ נסגר מהמשטח המקורי, בלי בנייה מחדש."
+    # last resort: rebuild from voxels (loses some fine detail, smoothed afterwards)
     n = mesh.body_count
     solid = solidify(mesh)
     return solid, "הקובץ לא היה גוף סגור (%d חלקים נפרדים) ונבנה מחדש כגוף אחד." % n
