@@ -190,18 +190,27 @@ function renderStage(d) {
   const hasImage = !!(d && d.image);
   const hasModel = !!(d && d.spec);
   const a = busy(d) ? activeStep(d) : null;
+  // "model" is the generator's textured model (what the client approved, smooth to the eye);
+  // "production" is the scaled, closed STL that gets printed, shown raw so the jeweler can judge it
+  const hasSource = !!(d && d.glb_source);
+  const sources = {
+    model: hasSource ? fileUrl(d, "source.glb") : null,
+    production: hasModel ? fileUrl(d, d.spec.view_glb) : null,
+  };
+  let view = stageView;
   // while the file is being built, show what the machine is working from
-  let view = stageView, modelSrc = hasModel ? fileUrl(d, d.spec.view_glb) : null;
   if (a && a.key === "model3d" && d.stoneless_image) view = "stoneless";
-  if (a && a.key === "mesh" && d.glb_source) { view = "model"; modelSrc = fileUrl(d, "source.glb"); }
+  if (a && a.key === "mesh" && hasSource) view = "model";
   $("#stageEmpty").hidden = hasImage || busy(d);
-  $("#stageSwitch").hidden = busy(d) || !(d && (d.stoneless_image || hasModel));
+  $("#stageSwitch").hidden = busy(d) || !(d && (d.stoneless_image || hasSource || hasModel));
   $$("#stageSwitch button").forEach((b) => {
-    b.hidden = (b.dataset.show === "stoneless" && !d?.stoneless_image) || (b.dataset.show === "model" && !hasModel);
+    const k = b.dataset.show;
+    b.hidden = (k === "stoneless" && !d?.stoneless_image) || ((k === "model" || k === "production") && !sources[k]);
   });
-  if (view === "model" && !modelSrc) view = "image";
+  if ((view === "model" || view === "production") && !sources[view]) view = "image";
   if (view === "stoneless" && !d?.stoneless_image) view = "image";
-  const showModel = view === "model";
+  const showModel = view === "model" || view === "production";
+  const modelSrc = showModel ? sources[view] : null;
   $("#viewer").hidden = !showModel;
   $("#stagePrint").hidden = !hasImage || showModel;
   if (showModel) {
