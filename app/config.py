@@ -28,6 +28,9 @@ PIAPI_KEY = os.getenv("PIAPI_KEY", "")
 # PiAPI accepts "url or base64" for the image; the exact base64 form isn't documented.
 PIAPI_IMAGE_FORMAT = os.getenv("PIAPI_IMAGE_FORMAT", "datauri")  # datauri | raw
 
+# Shared password for the studio (client links stay public). Empty = no login, only for local use.
+STUDIO_PASSWORD = os.getenv("STUDIO_PASSWORD", "")
+
 # "auto" = real provider when its key is set, mock otherwise.
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "auto")
 MODEL3D_PROVIDER = os.getenv("MODEL3D_PROVIDER", "auto")

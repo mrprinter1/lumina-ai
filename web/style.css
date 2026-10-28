@@ -147,6 +147,10 @@ model-viewer { width: 100%; max-width: 680px; height: min(66vh, 600px); --poster
   border-inline-start: 1px solid var(--line);
 }
 .steps { display: flex; list-style: none; padding: 0; margin: 0 0 30px; counter-reset: s; border-bottom: 1px solid var(--line); }
+/* the steps stay reachable while the long form scrolls */
+@media (min-width: 961px) {
+  .steps { position: sticky; top: 70px; z-index: 4; background: var(--velvet); margin-inline: -40px; padding-inline: 40px; }
+}
 .steps li { flex: 1; counter-increment: s; }
 .steps button {
   position: relative; width: 100%; background: none; border: 0; padding: 10px 0 14px; font: inherit; font-size: 15px;
@@ -382,3 +386,18 @@ model-viewer::part(default-progress-bar) { display: none; }
 .stage.working.has-content .loader .bar { width: 100%; }
 .stage.working.has-content .stage-caption { visibility: hidden; }
 .stage.working.has-content model-viewer { opacity: .85; }
+
+/* ---------- login ---------- */
+.login { max-width: 380px; margin: 0 auto; padding: 18vh 20px 60px; }
+.login h1 { font: 400 54px/1 var(--display); margin-bottom: 10px; }
+.login .btn { width: 100%; margin-top: 8px; }
+.topbar .logout { margin-inline-start: 18px; font-size: 14px; color: var(--ivory-faint); text-decoration: none; }
+.topbar .logout:hover { color: var(--ivory); }
+
+/* the next-step prompt at the end of a step: impossible to miss, no hunting for the tabs */
+.next { margin-top: 30px; padding: 20px 22px; border: 1px solid rgba(201, 163, 91, .45); border-radius: 12px; background: rgba(201, 163, 91, .07); }
+.next p { margin: 0 0 14px; color: var(--ivory); }
+.next .btn { width: 100%; }
+.next.attn { animation: attn 1.6s var(--ease) 2; }
+@keyframes attn { 0%, 100% { box-shadow: 0 0 0 0 rgba(243, 223, 168, 0); } 40% { box-shadow: 0 0 0 6px rgba(243, 223, 168, .22); } }
+@media (prefers-reduced-motion: reduce) { .next.attn { animation: none; } }

@@ -4,6 +4,7 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 async function api(path, opts = {}) {
   const isForm = opts.body instanceof FormData;
   const r = await fetch(path, { ...opts, headers: isForm ? {} : { "Content-Type": "application/json" } });
+  if (r.status === 401) { location.href = "/login"; throw new Error("צריך להתחבר מחדש"); }
   if (!r.ok) {
     const detail = (await r.json().catch(() => ({}))).detail;
     throw new Error(typeof detail === "string" ? detail : r.statusText);
@@ -110,7 +111,7 @@ function setStep(s, { animate = true } = {}) {
     FX.rise([...el.children].filter((c) => !c.classList.contains("step-title") && !c.hidden), { delay: 0.15 });
   }
 }
-$$("#steps button").forEach((b) => (b.onclick = () => setStep(b.dataset.step)));
+$$("#steps button").forEach((b) => (b.onclick = () => { setStep(b.dataset.step); if (current) render(current); }));
 
 function setStageView(v) {
   stageView = v;
@@ -252,6 +253,10 @@ function render(d) {
   $("#newDesign").hidden = !d;
   $("#optionGroups").inert = approved;
 
+  // what to do next, at the bottom of the step where the eyes already are
+  $("#nextDesign").hidden = !(d && d.image && !busy(d) && step === "design");
+  $("#nextPrice").hidden = !(d && d.image && !busy(d) && step === "price");
+
   // step 2: production file
   const q = d ? d.quote : null;
   const producing = busy(d) && (d.progress?.steps || []).some((s) => s.key === "mesh");
@@ -327,11 +332,17 @@ function render(d) {
   if (!d) notice("");
   else if (d.status === "error") notice("משהו נכשל: " + d.error, true);
   else if (busy(d)) notice("");
-  else if (d.image && !d.spec && step === "design") notice("ההדמיה מוכנה. אפשר להמשיך למחיר ולקובץ.");
+  else if (d.image && !d.spec && step === "design") notice("ההדמיה מוכנה. לחצו על \"המשך\" למטה כדי להכין קובץ ומחיר.");
   else notice("");
 
   // finished building the file: turn the stage to the 3D model once
   if (wasBusy && d && !busy(d) && d.spec && step === "price") setStageView("model");
+  // finished the picture: take the jeweler to the button that continues, instead of leaving them to find the tabs
+  if (wasBusy && d && !busy(d) && d.image && !d.spec && step === "design" && d.status === "image_ready") {
+    const box = $("#nextDesign");
+    box.classList.remove("attn"); void box.offsetWidth; box.classList.add("attn");
+    setTimeout(() => FX.scrollTo(box), 350);
+  }
   wasBusy = busy(d);
 
   clearTimeout(pollTimer);
@@ -409,6 +420,8 @@ $("#newDesign").onclick = () => {
   setStep("design");
   render(null);
 };
+$("#toPrice").onclick = () => { setStep("price"); FX.scrollTop(); render(current); };
+$("#toApprove").onclick = () => { setStep("approve"); FX.scrollTop(); render(current); };
 $("#produce").onclick = () => current && run(() => api(`/api/designs/${current.id}/produce`, json("POST")));
 // rebuilds the STL from the model already received: no new API cost
 $("#reprocess").onclick = () => current && run(() => api(`/api/designs/${current.id}/reprocess`, json("POST")));
@@ -586,6 +599,7 @@ $("#settingsForm").addEventListener("submit", async (e) => {
     $("#providers").hidden = false;
     $("#providers").textContent = "מצב הדגמה: התמונות והתלת-ממד אינם אמיתיים";
   }
+  $("#logout").hidden = !meta.login;
   renderOptions();
   applyBrand();
   render(null);

@@ -25,6 +25,8 @@ const FX = (() => {
     return lenis;
   }
   const scrollTop = () => (lenis ? lenis.scrollTo(0, { immediate: true }) : window.scrollTo(0, 0));
+  const scrollTo = (el) => (el && (lenis ? lenis.scrollTo(el, { offset: -(innerHeight / 2 - 60), duration: 1.1 })
+    : el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" })));
 
   /* ---- SplitText: words rise out of a mask ---- */
   function split(el, { delay = 0, stagger = 0.06, duration = 1.1 } = {}) {
@@ -171,6 +173,6 @@ const FX = (() => {
     if (animate) G.fromTo(dlg, { y: 24, autoAlpha: 0, scale: 0.98 }, { y: 0, autoAlpha: 1, scale: 1, duration: 0.7, ease: "expo.out" });
   }
 
-  return { reduce, animate, smoothScroll, scrollTop, split, rise, unveil, countUp, spotlight, magnet, spark, sparkAt,
+  return { reduce, animate, smoothScroll, scrollTop, scrollTo, split, rise, unveil, countUp, spotlight, magnet, spark, sparkAt,
     celebrate, lightsOn, onScrollReveal, openDialog };
 })();

@@ -25,6 +25,7 @@
     <a href="#orders" data-view="orders">הזמנות</a>
     <a href="#settings" data-view="settings">הגדרות</a>
   </nav>
+  <a href="/logout" class="logout" id="logout" hidden>יציאה</a>
   <span id="providers" class="provider" hidden></span>
 </header>
 
@@ -94,6 +95,10 @@
         <button id="generate" class="btn primary">יצירת הדמיה</button>
         <button id="newDesign" class="btn quiet" hidden>עיצוב חדש</button>
       </div>
+      <div class="next" id="nextDesign" hidden>
+        <p>ההדמיה מוכנה. השלב הבא הוא הכנת קובץ הייצור והמחיר.</p>
+        <button id="toPrice" class="btn primary">המשך: קובץ ייצור ומחיר ←</button>
+      </div>
     </div>
 
     <!-- step 2 -->
@@ -128,6 +133,10 @@
             <button id="unpublishPrice" class="link" hidden>הסתרת המחיר מהלקוח</button>
           </div>
         </div>
+      </div>
+      <div class="next" id="nextPrice" hidden>
+        <p>אחרי ששלחתם את המחיר, הלקוח יכול לאשר ולחתום.</p>
+        <button id="toApprove" class="btn primary">המשך: אישור הלקוח ←</button>
       </div>
       <details class="manual">
         <summary>העלאת קובץ GLB ידנית</summary>

@@ -6,12 +6,12 @@ import re
 import time
 from urllib.parse import quote as urlquote
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog, config, jobs, sizes, store
+from . import auth, catalog, config, jobs, sizes, store
 from .providers import images, model3d
 
 logging.basicConfig(level=logging.INFO)
@@ -21,12 +21,29 @@ BUSY = ("queued", "working")
 
 
 @app.on_event("startup")
+def warn_if_open():
+    if not auth.enabled():
+        logging.getLogger("lumina").warning(
+            "STUDIO_PASSWORD is not set: the studio is open to anyone who can reach this address.")
+
+
+@app.on_event("startup")
 def recover_interrupted_jobs():
     # jobs run in this process; after a restart nothing will finish them, so say so instead of loading forever
     for d in store.list_designs(limit=10_000):
         if d["status"] in BUSY:
             store.update_design(d["id"], status="error", step="",
                                 error="השרת הופעל מחדש באמצע העבודה. לחצו שוב כדי להמשיך.")
+
+
+@app.middleware("http")
+async def require_login(request, call_next):
+    path = request.url.path
+    if auth.enabled() and not auth.is_public(path) and not auth.valid_cookie(request.cookies.get(auth.COOKIE)):
+        if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse("/login?next=" + urlquote(path), status_code=303)
+        return JSONResponse({"detail": "צריך להתחבר מחדש"}, status_code=401)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -91,13 +108,62 @@ def _wa_phone(phone):
     return digits
 
 
+# ---------- login ----------
+
+LOGIN_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>כניסה</title>
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Heebo:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css"></head><body>
+<main class="login"><h1>Lumina</h1><p class="lede">הכניסה לסטודיו מוגנת בסיסמה.</p>
+<form method="post" action="/login"><input type="hidden" name="next" value="%(next)s">
+<label>סיסמה<input name="password" type="password" autocomplete="current-password" autofocus required></label>
+<p class="error" role="alert">%(error)s</p>
+<button class="btn primary" type="submit">כניסה</button></form></main></body></html>"""
+
+
+def _safe_next(value):
+    # only same-site paths, never a full URL
+    return value if value.startswith("/") and not value.startswith("//") else "/"
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(next: str = "/"):
+    if not auth.enabled():
+        return RedirectResponse("/", status_code=303)
+    return LOGIN_PAGE % {"next": html.escape(_safe_next(next)), "error": ""}
+
+
+@app.post("/login")
+def login(request: Request, password: str = Form(""), next: str = Form("/")):
+    ip = auth.client_ip(request)
+    if auth.locked_out(ip):
+        return HTMLResponse(LOGIN_PAGE % {"next": html.escape(_safe_next(next)),
+                                          "error": "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות."}, status_code=429)
+    if not auth.check_password(ip, password):
+        return HTMLResponse(LOGIN_PAGE % {"next": html.escape(_safe_next(next)), "error": "הסיסמה לא נכונה."},
+                            status_code=401)
+    response = RedirectResponse(_safe_next(next), status_code=303)
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(auth.COOKIE, auth.make_cookie(), max_age=auth.SESSION_DAYS * 86400, httponly=True,
+                        samesite="lax", secure=secure)
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE)
+    return response
+
+
 # ---------- jeweler API ----------
 
 @app.get("/api/meta")
 def meta():
     return {"options": catalog.OPTIONS, "defaults": catalog.DEFAULTS, "size_systems": sizes.SYSTEMS,
             "stages": store.ORDER_STAGES,
-            "providers": {"image": images.get_provider().name, "model3d": model3d.get_provider().name}}
+            "providers": {"image": images.get_provider().name, "model3d": model3d.get_provider().name},
+            "login": auth.enabled()}
 
 
 @app.get("/api/settings")
