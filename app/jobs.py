@@ -176,7 +176,8 @@ def quote(design, settings):
     sel = catalog.normalize(design["selections"])
     alloy = "%s %s gold" % (sel["karat"], sel["metal"])
     weight = (spec.get("estimated_metal_weight_g") or {}).get(alloy)
-    price_g = float(settings["gold_price_per_gram"].get(sel["karat"], 0) or 0)
+    prices = settings["gold_price_per_gram"]
+    price_g = float(prices.get("%s %s" % (sel["karat"], sel["metal"])) or prices.get(sel["karat"]) or 0)
     labor = float(settings.get("labor_cost") or 0)
     stone = float(order.get("stone_price") or 0)
     margin = float(settings.get("margin_percent") or 0)

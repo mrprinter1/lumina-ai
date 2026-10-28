@@ -185,19 +185,50 @@ def put_settings(body: dict):
     if body.get("size_system") and body["size_system"] not in sizes.SYSTEMS:
         raise HTTPException(400, "unknown size system")
     body.pop("has_logo", None)
+    if "gold_price_per_gram" in body:
+        allowed = set(store.DEFAULT_SETTINGS["gold_price_per_gram"])
+        prices = body["gold_price_per_gram"] if isinstance(body["gold_price_per_gram"], dict) else {}
+        clean = {}
+        for k in allowed:
+            try:
+                v = float(prices.get(k) or 0)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "מחיר הזהב צריך להיות מספר")
+            if v < 0:
+                raise HTTPException(400, "מחיר הזהב לא יכול להיות שלילי")
+            clean[k] = v
+        body["gold_price_per_gram"] = clean
+    if "logo_background" in body and body["logo_background"] not in ("light", "dark", "none"):
+        raise HTTPException(400, "unknown logo background")
     return store.save_settings(body)
 
 
 @app.post("/api/settings/logo")
 async def upload_logo(file: UploadFile = File(...)):
     data = await file.read()
-    if not data.startswith(b"\x89PNG") and not data[:3] == b"\xff\xd8\xff":
-        raise HTTPException(400, "הלוגו צריך להיות PNG או JPG")
-    if len(data) > 2_000_000:
-        raise HTTPException(400, "הלוגו גדול מ-2MB")
+    if _logo_type(data) is None:
+        raise HTTPException(400, "הלוגו צריך להיות קובץ PNG, JPG או WebP")
+    if len(data) > 3_000_000:
+        raise HTTPException(400, "הלוגו גדול מ-3MB. אפשר לכווץ אותו או להקטין את התמונה")
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     (config.DATA_DIR / "logo").write_bytes(data)
     return store.save_settings({"has_logo": True})
+
+
+@app.delete("/api/settings/logo")
+def delete_logo():
+    (config.DATA_DIR / "logo").unlink(missing_ok=True)
+    return store.save_settings({"has_logo": False})
+
+
+def _logo_type(head):
+    if head.startswith(b"\x89PNG"):
+        return "image/png"
+    if head[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 @app.get("/brand/logo")
@@ -205,8 +236,7 @@ def logo():
     path = config.DATA_DIR / "logo"
     if not path.exists():
         raise HTTPException(404)
-    media = "image/png" if path.read_bytes()[:4] == b"\x89PNG" else "image/jpeg"
-    return FileResponse(path, media_type=media)
+    return FileResponse(path, media_type=_logo_type(path.read_bytes()[:16]) or "image/png")
 
 
 @app.post("/api/designs")
@@ -224,6 +254,15 @@ def create(body: NewDesign):
 @app.get("/api/designs")
 def list_all():
     return [_public(d) for d in store.list_designs()]
+
+
+@app.delete("/api/designs/{design_id}")
+def delete_one(design_id: str):
+    d = _get(design_id)
+    if d["status"] in BUSY:
+        raise HTTPException(409, "עוד עובדים על ההזמנה. אפשר למחוק אותה כשהעבודה מסתיימת")
+    store.delete_design(design_id)
+    return {"deleted": design_id}
 
 
 @app.get("/api/designs/{design_id}")
@@ -410,7 +449,8 @@ def client_view(token: str):
                  "currency": pub["currency"]}
     approval = d.get("approval")
     return {
-        "business": {"name": s["business_name"], "phone": s["business_phone"], "has_logo": s["has_logo"]},
+        "business": {"name": s["business_name"], "phone": s["business_phone"], "has_logo": s["has_logo"],
+                     "logo_background": s["logo_background"]},
         "client_name": d["client"]["name"],
         "image": "/c/%s/image?v=%s" % (token, urlquote(d["image"] or "")) if d["image"] else None,
         "specs": specs, "price": price, "awaiting_price": not pub and not approval,
@@ -515,6 +555,8 @@ def spec_page(design_id: str):
         row("עובי דופן (אחוזון 5, מ\"מ)", s["wall_thickness_p5_mm"]),
         row("מקדם התכווצות שעווה", s["shrink"]),
     ])
+    logo_html = '<img src="/brand/logo" alt="" style="height:48px;max-width:220px;object-fit:contain;margin-bottom:10px">' \
+        if settings.get("has_logo") else ""
     notes = "".join("<li>%s</li>" % e(w) for w in s["warnings"])
     free = "<p><b>בקשות הלקוח:</b> %s</p>" % e(d["free_text"]) if d["free_text"] else ""
     img = '<img src="/files/%s/%s" alt="העיצוב המאושר">' % (e(design_id), e(d["image"])) if d["image"] else ""
@@ -531,11 +573,11 @@ img{width:100%%;max-width:340px;border-radius:4px;margin:16px 0}table{width:100%
 th,td{text-align:right;padding:7px 4px;border-bottom:1px solid #e4e6e3;vertical-align:top}th{color:#6d7370;font-weight:400;width:45%%}
 .ok{color:#2f6b4f}a.btn{display:inline-block;margin:8px 0 0 8px;padding:8px 14px;border:1px solid #1f3a33;color:#1f3a33;border-radius:4px;text-decoration:none}
 @media print{a.btn{display:none}}</style></head><body><main>
-<h1>כרטיס עבודה</h1><p class="n">%s · עיצוב %s</p>%s%s%s<table>%s</table>
+%s<h1>כרטיס עבודה</h1><p class="n">%s · עיצוב %s</p>%s%s%s<table>%s</table>
 <a class="btn" href="/files/%s/ring.stl">הורדת STL</a><a class="btn" href="javascript:print()">הדפסה / PDF</a>
 <h3>הערות אוטומטיות</h3><ul class="n">%s</ul>
 <p class="n">המשקל והמחיר הם הערכה לפי נפח הקובץ וצפיפות הסגסוגת, בלי איבוד ביציקה. הקובץ הוא טיוטה לייצור ודורש בדיקה.</p>
-</main></body></html>""" % (e(settings["business_name"] or "Lumina"), e(design_id), appr_html, img, free, rows,
+</main></body></html>""" % (logo_html, e(settings["business_name"] or "Lumina"), e(design_id), appr_html, img, free, rows,
                              e(design_id), notes)
 
 

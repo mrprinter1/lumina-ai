@@ -19,7 +19,7 @@
 <body>
 <div class="curtain" id="curtain"></div>
 <header class="topbar">
-  <a href="#studio" class="wordmark"><img id="brandLogo" alt="" hidden><span id="brandName" class="shine">Lumina</span></a>
+  <a href="#studio" class="wordmark"><img id="brandLogo" class="brand-logo" alt="" hidden><span id="brandName" class="shine">Lumina</span></a>
   <nav>
     <a href="#studio" data-view="studio">סטודיו</a>
     <a href="#orders" data-view="orders">הזמנות</a>
@@ -63,6 +63,10 @@
   </div>
 
   <div class="panel">
+    <div class="panel-tools">
+      <button id="newDesign" class="btn quiet" hidden>＋ הזמנה חדשה</button>
+      <button id="deleteDesign" class="btn quiet danger" hidden>מחיקת ההזמנה</button>
+    </div>
     <ol class="steps" id="steps">
       <li><button type="button" data-step="design" aria-current="step">עיצוב</button></li>
       <li><button type="button" data-step="price">מחיר וקובץ</button></li>
@@ -93,7 +97,6 @@
       <p class="hint">החריטה מופיעה בהדמיה ובכרטיס העבודה. היא לא נבנית בקובץ התלת-ממד, ומבצעים אותה בסוף בעבודת יד או בלייזר.</p>
       <div class="actions">
         <button id="generate" class="btn primary">יצירת הדמיה</button>
-        <button id="newDesign" class="btn quiet" hidden>עיצוב חדש</button>
       </div>
       <div class="next" id="nextDesign" hidden>
         <p>ההדמיה מוכנה. השלב הבא הוא הכנת קובץ הייצור והמחיר.</p>
@@ -173,7 +176,10 @@
 <section id="view-orders" class="view sheet" hidden>
   <div class="sheet-head">
     <h1 data-split>הזמנות</h1>
-    <select id="stageFilter" aria-label="סינון לפי שלב"><option value="">כל השלבים</option></select>
+    <div class="head-tools">
+      <select id="stageFilter" aria-label="סינון לפי שלב"><option value="">כל השלבים</option></select>
+      <button id="newOrder" class="btn primary">＋ הזמנה חדשה</button>
+    </div>
   </div>
   <div id="orderList" class="orders"></div>
 </section>
@@ -189,7 +195,21 @@
         <label>שם העסק<input name="business_name"></label>
         <label>טלפון העסק<input name="business_phone" type="tel" dir="ltr"></label>
       </div>
-      <label>לוגו (PNG או JPG)<input id="logoFile" type="file" accept="image/png,image/jpeg"></label>
+      <div class="logo-box">
+        <div class="logo-preview" id="logoPreviewBox" hidden><img id="logoPreview" class="brand-logo" alt="הלוגו הנוכחי"></div>
+        <div class="logo-fields">
+          <label>לוגו העסק (PNG, JPG או WebP, עד 3MB)<input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <label>רקע מאחורי הלוגו
+            <select name="logo_background">
+              <option value="light">בהיר (מתאים ללוגו כהה)</option>
+              <option value="dark">כהה (מתאים ללוגו בהיר)</option>
+              <option value="none">בלי רקע (ללוגו שקוף שנראה על רקע כהה)</option>
+            </select>
+          </label>
+          <button type="button" class="link" id="removeLogo" hidden>הסרת הלוגו</button>
+        </div>
+      </div>
+      <p class="hint">הלוגו מופיע בראש האתר, בקישור שהלקוח מקבל, בטופס האישור ובכרטיס העבודה. הלוגו נשמר עם לחיצה על "שמירת ההגדרות".</p>
     </fieldset>
     <fieldset>
       <legend>שיתוף עם הלקוח</legend>
@@ -203,10 +223,21 @@
     </fieldset>
     <fieldset>
       <legend>תמחור</legend>
-      <div class="three">
-        <label>מטבע<input name="currency" maxlength="4"></label>
-        <label>גרם זהב 14K<input name="gold14" type="number" min="0" step="0.01"></label>
-        <label>גרם זהב 18K<input name="gold18" type="number" min="0" step="0.01"></label>
+      <label class="short">מטבע<input name="currency" maxlength="4"></label>
+      <span class="label">מחיר לגרם זהב (במטבע שבחרתם)</span>
+      <div class="gold-grid" role="group" aria-label="מחיר לגרם זהב לפי קראט וצבע">
+        <span></span>
+        <span class="gh"><i class="sw sw-yellow"></i>צהוב</span>
+        <span class="gh"><i class="sw sw-white"></i>לבן</span>
+        <span class="gh"><i class="sw sw-rose"></i>רוז</span>
+        <span class="gk">14K</span>
+        <input name="gold_14K_yellow" type="number" min="0" step="0.01" inputmode="decimal" aria-label="14K צהוב">
+        <input name="gold_14K_white" type="number" min="0" step="0.01" inputmode="decimal" aria-label="14K לבן">
+        <input name="gold_14K_rose" type="number" min="0" step="0.01" inputmode="decimal" aria-label="14K רוז">
+        <span class="gk">18K</span>
+        <input name="gold_18K_yellow" type="number" min="0" step="0.01" inputmode="decimal" aria-label="18K צהוב">
+        <input name="gold_18K_white" type="number" min="0" step="0.01" inputmode="decimal" aria-label="18K לבן">
+        <input name="gold_18K_rose" type="number" min="0" step="0.01" inputmode="decimal" aria-label="18K רוז">
       </div>
       <div class="two">
         <label>עלות עבודה לטבעת<input name="labor_cost" type="number" min="0" step="1"></label>
@@ -237,6 +268,17 @@
     <p class="error" id="signError" role="alert"></p>
     <div class="actions"><button type="submit" class="btn primary" value="ok">אישור העיצוב</button><button type="button" class="btn quiet" id="signCancel">ביטול</button></div>
   </form>
+</dialog>
+
+<dialog id="deleteDialog" class="sheet-dialog" data-lenis-prevent>
+  <h2>מחיקת הזמנה</h2>
+  <p id="deleteText" class="lede"></p>
+  <p class="warn" id="deleteWarn" hidden></p>
+  <p class="error" id="deleteError" role="alert"></p>
+  <div class="actions">
+    <button type="button" class="btn danger-solid" id="deleteConfirm">מחיקה</button>
+    <button type="button" class="btn quiet" id="deleteCancel">ביטול</button>
+  </div>
 </dialog>
 
 <dialog id="shareDialog" class="sheet-dialog" data-lenis-prevent>

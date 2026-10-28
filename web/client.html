@@ -19,7 +19,7 @@
 <div class="curtain" id="curtain"></div>
 <main class="client-page">
   <div class="client-hero" id="hero" data-spot>
-    <div class="client-brand"><img id="logo" alt="" hidden><span id="business" class="shine"></span></div>
+    <div class="client-brand"><img id="logo" class="brand-logo" alt="" hidden><span id="business" class="shine"></span></div>
     <figure class="print" id="print" hidden><img id="image" alt="הדמיית הטבעת שלך"></figure>
     <h1 id="greeting" data-split></h1>
     <p class="scroll-cue" id="cue" hidden>הפרטים והאישור למטה</p>
@@ -37,6 +37,7 @@
       <p class="lede" id="waitingText">נשלח לכם הצעת מחיר בקרוב. אחרי שהיא תגיע, תוכלו לאשר את העיצוב כאן.</p>
     </section>
     <section id="approveSection" class="reveal" hidden>
+      <div class="approve-brand"><img id="logo2" class="brand-logo" alt="" hidden><span id="business2"></span></div>
       <h2>אישור העיצוב</h2>
       <p class="hint">האישור נשמר יחד עם השם, החתימה, התאריך והמחיר שמופיע למעלה.</p>
       <form id="approveForm">
@@ -75,7 +76,9 @@ addEventListener("DOMContentLoaded", () => {
     const b = c.business;
     $("#business").textContent = b.name || "";
     document.title = b.name ? `העיצוב שלך – ${b.name}` : "העיצוב שלך";
-    if (b.has_logo) { $("#logo").src = "/brand/logo"; $("#logo").hidden = false; }
+    document.documentElement.dataset.logo = b.logo_background || "light";
+    if (b.has_logo) { $("#logo").src = "/brand/logo"; $("#logo").hidden = false; $("#logo2").src = "/brand/logo"; $("#logo2").hidden = false; }
+    $("#business2").textContent = b.name || "";
     if (c.image && $("#image").getAttribute("src") !== c.image) { $("#image").src = c.image; $("#print").hidden = false; }
     $("#greeting").textContent = c.client_name ? `${c.client_name}, זו הטבעת שעיצבנו יחד` : "זו הטבעת שעיצבנו יחד";
 

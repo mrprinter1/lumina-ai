@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import shutil
 import threading
 import time
 import uuid
@@ -25,7 +26,10 @@ DEFAULT_SETTINGS = {
     "margin_percent": 0,
     "currency": "₪",
     "size_system": "circumference",
-    "gold_price_per_gram": {"14K": 0, "18K": 0},  # jeweler fills in today's price
+    # price per gram for every karat and colour, e.g. "14K white"; the jeweler fills in today's prices.
+    # Older saves only have "14K" / "18K" keys; quote() falls back to those.
+    "gold_price_per_gram": {"%s %s" % (k, m): 0 for k in ("14K", "18K") for m in ("yellow", "white", "rose")},
+    "logo_background": "light",  # plate behind the logo: light | dark | none
     "labor_cost": 0,
     "wax_shrink": 1.0,
     "densities": DENSITIES,
@@ -115,6 +119,15 @@ def update_design(design_id, **fields):
         design["updated_at"] = time.time()
         _write_json(design_dir(design_id) / "design.json", design)
         return design
+
+
+def delete_design(design_id):
+    """Remove a design with its files (images, models, signature). The client link stops working."""
+    with _lock:
+        folder = design_dir(design_id)
+        if not (folder / "design.json").exists():
+            raise KeyError(design_id)
+        shutil.rmtree(folder)
 
 
 def ensure_share_token(design_id):

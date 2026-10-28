@@ -313,6 +313,7 @@ function render(d) {
   $("#generate").textContent = d && d.image && !approved ? "הדמיה חדשה" : "יצירת הדמיה";
   $("#generate").disabled = busy(d) || approved;
   $("#newDesign").hidden = !d;
+  $("#deleteDesign").hidden = !d;
   $("#optionGroups").inert = approved;
 
   // what to do next, at the bottom of the step where the eyes already are
@@ -343,7 +344,8 @@ function render(d) {
     const rows = [];
     if (d.spec) {
       rows.push(["משקל זהב משוער", q.weight_g ? `${q.weight_g} גרם` : "—"]);
-      rows.push([`זהב ${q.alloy.split(" ")[0]}`, q.gold_cost ? money(q.gold_cost, cur) : "צריך להגדיר מחיר לגרם בהגדרות"]);
+      const goldName = `${labelOf("metal", d.selections.metal)} ${d.selections.karat}`;
+      rows.push([goldName, q.gold_cost ? money(q.gold_cost, cur) : `צריך להגדיר מחיר לגרם ל${goldName} בהגדרות`]);
     }
     if (q.stone_price) rows.push(["אבן", money(q.stone_price, cur)]);
     if (q.labor_cost) rows.push(["עבודה", money(q.labor_cost, cur)]);
@@ -472,15 +474,51 @@ $("#generate").onclick = () => {
     ...formBody(), client: { name: $("#clientName").value, phone: $("#clientPhone").value },
   })));
 };
-$("#newDesign").onclick = () => {
+// a blank order: forget the open one (it stays in the orders list) and reset every choice to its default
+function startNew() {
   current = null;
   clearTimeout(pollTimer);
   Object.assign(selections, meta.defaults);
   syncOptions();
   ["#clientName", "#clientPhone", "#freeText", "#engraving"].forEach((s) => ($(s).value = ""));
-  history.replaceState(null, "", "#studio");
+  $("#ringSize").value = 54;
   setStep("design");
   render(null);
+  if (location.hash !== "#studio") location.hash = "#studio";
+  FX.scrollTop();
+}
+$("#newDesign").onclick = startNew;
+$("#newOrder").onclick = startNew;
+
+/* ---------- delete an order ---------- */
+let deleting = null;
+function askDelete(d) {
+  deleting = d;
+  $("#deleteText").textContent = `למחוק את ההזמנה של ${d.client.name || "לקוח ללא שם"}? אי אפשר לשחזר אותה.`;
+  const warn = $("#deleteWarn");
+  warn.hidden = !d.approval;
+  warn.textContent = d.approval ? "הלקוח כבר אישר את העיצוב בחתימה. המחיקה מוחקת גם את החתימה ואת האישור." : "";
+  $("#deleteError").textContent = "";
+  $("#deleteConfirm").disabled = false;
+  FX.openDialog($("#deleteDialog"));
+}
+$("#deleteCancel").onclick = () => $("#deleteDialog").close();
+$("#deleteDesign").onclick = () => current && askDelete(current);
+$("#deleteConfirm").onclick = async () => {
+  if (!deleting) return;
+  $("#deleteConfirm").disabled = true;
+  try {
+    await api(`/api/designs/${deleting.id}`, { method: "DELETE" });
+    const wasCurrent = current && current.id === deleting.id;
+    deleting = null;
+    $("#deleteDialog").close();
+    if (wasCurrent) startNew();
+    if (!$("#view-orders").hidden) loadOrders();
+    notice("ההזמנה נמחקה.");
+  } catch (e) {
+    $("#deleteError").textContent = e.message;
+    $("#deleteConfirm").disabled = false;
+  }
 };
 $("#toPrice").onclick = () => { setStep("price"); FX.scrollTop(); render(current); };
 $("#toApprove").onclick = () => { setStep("approve"); FX.scrollTop(); render(current); };
@@ -578,6 +616,8 @@ async function loadOrders(entering = false) {
   }
   box.innerHTML = "";
   for (const d of rows) {
+    const item = document.createElement("div");
+    item.className = "order-item";
     const b = document.createElement("button");
     b.className = "order-row";
     b.dataset.spot = "";
@@ -588,7 +628,14 @@ async function loadOrders(entering = false) {
       `<span class="stage-tag s-${d.order.stage}">${stageLabel(d.order.stage)}</span>` +
       `<span class="amount">${d.quote.final_price ? money(d.quote.final_price, d.quote.currency) : ""}</span>`;
     b.onclick = () => (location.hash = "#studio/" + d.id);
-    box.appendChild(b);
+    const del = document.createElement("button");
+    del.className = "order-del hit";
+    del.type = "button";
+    del.setAttribute("aria-label", `מחיקת ההזמנה של ${d.client.name || "לקוח ללא שם"}`);
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg>';
+    del.onclick = () => askDelete(d);
+    item.append(b, del);
+    box.appendChild(item);
   }
   if (entering) FX.rise($$(".order-row"), { delay: 0.25, stagger: 0.06, y: 24 });
 }
@@ -600,16 +647,38 @@ function applyBrand() {
   const img = $("#brandLogo");
   img.hidden = !settings.has_logo;
   if (settings.has_logo) img.src = "/brand/logo?v=" + Date.now();
+  document.documentElement.dataset.logo = settings.logo_background || "light";
   $("#sizeSystemLabel").textContent = meta.size_systems[settings.size_system];
   document.title = (settings.business_name || "Lumina") + " – סטודיו";
 }
+function showLogoPreview(file) {
+  const box = $("#logoPreviewBox"), img = $("#logoPreview");
+  if (file) img.src = URL.createObjectURL(file);
+  else if (settings.has_logo) img.src = "/brand/logo?v=" + Date.now();
+  box.hidden = !(file || settings.has_logo);
+  $("#removeLogo").hidden = !settings.has_logo;
+}
+$("#logoFile").addEventListener("change", (e) => { if (e.target.files[0]) showLogoPreview(e.target.files[0]); });
+$("#removeLogo").onclick = async () => {
+  try {
+    settings = await api("/api/settings/logo", { method: "DELETE" });
+    $("#logoFile").value = "";
+    applyBrand();
+    showLogoPreview();
+    $("#settingsSaved").textContent = "הלוגו הוסר.";
+  } catch (e) { $("#settingsSaved").textContent = e.message; }
+};
 function fillSettings() {
   const f = $("#settingsForm");
   for (const k of ["business_name", "business_phone", "public_url", "share_message", "currency", "labor_cost",
     "margin_percent", "wax_shrink", "size_system"]) f[k].value = settings[k] ?? "";
   for (const k of ["client_sees_specs", "client_sees_weight"]) f[k].checked = !!settings[k];
-  f.gold14.value = settings.gold_price_per_gram["14K"] || "";
-  f.gold18.value = settings.gold_price_per_gram["18K"] || "";
+  const gp = settings.gold_price_per_gram || {};
+  for (const k of ["14K", "18K"]) for (const m of ["yellow", "white", "rose"]) {
+    f[`gold_${k}_${m}`].value = gp[`${k} ${m}`] || gp[k] || "";  // older saves had one price per karat
+  }
+  f.logo_background.value = settings.logo_background || "light";
+  showLogoPreview();
   $("#settingsSaved").textContent = "";
 }
 $("#settingsForm").addEventListener("submit", async (e) => {
@@ -624,7 +693,9 @@ $("#settingsForm").addEventListener("submit", async (e) => {
       client_sees_specs: f.client_sees_specs.checked,
       client_sees_weight: f.client_sees_weight.checked,
       currency: f.currency.value || "₪",
-      gold_price_per_gram: { "14K": Number(f.gold14.value) || 0, "18K": Number(f.gold18.value) || 0 },
+      gold_price_per_gram: Object.fromEntries(["14K", "18K"].flatMap((k) =>
+        ["yellow", "white", "rose"].map((m) => [`${k} ${m}`, Number(f[`gold_${k}_${m}`].value) || 0]))),
+      logo_background: f.logo_background.value,
       labor_cost: Number(f.labor_cost.value) || 0,
       margin_percent: Number(f.margin_percent.value) || 0,
       wax_shrink: Number(f.wax_shrink.value) || 1,
@@ -638,6 +709,7 @@ $("#settingsForm").addEventListener("submit", async (e) => {
       $("#logoFile").value = "";
     }
     applyBrand();
+    showLogoPreview();
     $("#settingsSaved").textContent = "ההגדרות נשמרו.";
     FX.sparkAt(e.submitter || f.querySelector("[type=submit]"), { count: 10, reach: 34 });
   } catch (err) {
