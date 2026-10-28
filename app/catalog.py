@@ -26,14 +26,14 @@ OPTIONS = {
     "shape": {
         "label": "צורת האבן",
         "items": [
-            {"id": "round", "he": "עגול", "en": "round brilliant cut"},
-            {"id": "oval", "he": "אובל", "en": "oval cut"},
-            {"id": "emerald", "he": "אמרלד", "en": "emerald cut"},
-            {"id": "cushion", "he": "קושן", "en": "cushion cut"},
-            {"id": "pear", "he": "טיפה", "en": "pear cut"},
-            {"id": "princess", "he": "פרינסס", "en": "princess cut"},
-            {"id": "marquise", "he": "מרקיזה", "en": "marquise cut"},
-            {"id": "radiant", "he": "רדיאנט", "en": "radiant cut"},
+            {"id": "round", "he": "עגול", "en": "round brilliant cut", "blurb": "הברק הגבוה ביותר. הבחירה הקלאסית.", "dims_1ct": [6.4, 6.4]},
+            {"id": "oval", "he": "אובל", "en": "oval cut", "blurb": "מאריך את האצבע ונראה גדול יותר מעגול באותו משקל.", "dims_1ct": [7.7, 5.7]},
+            {"id": "emerald", "he": "אמרלד", "en": "emerald cut", "blurb": "חיתוך מדרגות: שקיפות מראה ומראה נקי ואלגנטי.", "dims_1ct": [6.5, 4.6]},
+            {"id": "cushion", "he": "קושן", "en": "cushion cut", "blurb": "פינות מעוגלות ומראה רך ורומנטי.", "dims_1ct": [5.6, 5.6]},
+            {"id": "pear", "he": "טיפה", "en": "pear cut", "blurb": "נקודה מצד אחד, מאריך את האצבע.", "dims_1ct": [8.0, 5.5]},
+            {"id": "princess", "he": "פרינסס", "en": "princess cut", "blurb": "ריבוע מודרני עם ברק חזק.", "dims_1ct": [5.5, 5.5]},
+            {"id": "marquise", "he": "מרקיזה", "en": "marquise cut", "blurb": "מוארך עם שתי נקודות, נראה גדול מאוד.", "dims_1ct": [10.0, 5.0]},
+            {"id": "radiant", "he": "רדיאנט", "en": "radiant cut", "blurb": "פינות חתוכות וברק של עגול בצורה מלבנית.", "dims_1ct": [6.2, 5.2]},
         ],
     },
     "carat": {

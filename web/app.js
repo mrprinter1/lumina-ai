@@ -74,7 +74,8 @@ function renderOptions() {
     selections[key] ??= meta.defaults[key];
     const g = document.createElement("div");
     g.className = "group" + (key === "shape" ? " shapes" : "");
-    g.innerHTML = `<h3>${group.label}</h3><div class="opts" role="group" aria-label="${group.label}"></div>`;
+    g.innerHTML = `<h3>${group.label}</h3>` + (key === "shape" ? GEM_PANEL : "") +
+      `<div class="opts" role="group" aria-label="${group.label}"></div>`;
     for (const item of group.items) {
       const b = document.createElement("button");
       b.type = "button";
@@ -84,6 +85,13 @@ function renderOptions() {
       b.dataset.id = item.id;
       b.innerHTML = (key === "shape" ? shapeIcon(item.id) : "") + `<span>${item.he}</span>`;
       b.onclick = () => { selections[key] = item.id; syncOptions(); FX.sparkAt(b, { count: 7, reach: 22 }); };
+      if (key === "shape") {
+        // desktop: the preview follows the pointer; touch: it follows the selection (a tap selects)
+        b.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && showGem(item.id));
+        b.addEventListener("pointerleave", (e) => e.pointerType === "mouse" && showGem(selections.shape));
+        b.addEventListener("focus", () => showGem(item.id));
+        b.addEventListener("blur", () => showGem(selections.shape));
+      }
       g.querySelector(".opts").appendChild(b);
     }
     box.appendChild(g);
@@ -92,6 +100,39 @@ function renderOptions() {
 }
 function syncOptions() {
   $$(".opt").forEach((b) => b.setAttribute("aria-pressed", String(selections[b.dataset.key] === b.dataset.id)));
+  showGem(selections.shape);
+}
+
+/* ---------- gem preview ---------- */
+const GEM_PANEL = `<div class="gem" id="gem" aria-live="polite">
+  <model-viewer id="gemViewer" auto-rotate rotation-per-second="38deg" camera-orbit="25deg 66deg 112%"
+    interaction-prompt="none" disable-zoom disable-pan exposure="1.25" shadow-intensity="0"
+    environment-image="gems/env.jpg" alt="" loading="eager"></model-viewer>
+  <div class="gem-text"><b id="gemName"></b><p id="gemBlurb"></p><small id="gemSize"></small></div>
+</div>`;
+let gemShown = null;
+function gemSize(item, carat) {
+  // stone width and length scale with the cube root of weight; 1 carat sizes are typical, not exact
+  const k = Math.cbrt(Number(carat) || 1);
+  const [w, l] = item.dims_1ct.map((v) => Math.round(v * k * 10) / 10);
+  return w === l ? `${w} מ״מ` : `${l} × ${w} מ״מ`;
+}
+function showGem(id, { force = false } = {}) {
+  const box = $("#gem");
+  if (!box || !meta || !id) return;
+  const item = meta.options.shape.items.find((i) => i.id === id);
+  if (!item) return;
+  const carat = selections.carat || meta.defaults.carat;
+  const hovering = id !== selections.shape;
+  $("#gemName").textContent = item.he;
+  $("#gemBlurb").textContent = item.blurb || "";
+  $("#gemSize").textContent = `בערך ${gemSize(item, carat)} ב-${labelOf("carat", carat)}`;
+  box.classList.toggle("peek", hovering);
+  const viewer = $("#gemViewer");
+  if (gemShown !== id || force) {
+    gemShown = id;
+    viewer.setAttribute("src", `gems/${id}.glb`);
+  }
 }
 
 function caption(sel) {
@@ -600,6 +641,8 @@ $("#settingsForm").addEventListener("submit", async (e) => {
     $("#providers").textContent = "מצב הדגמה: התמונות והתלת-ממד אינם אמיתיים";
   }
   $("#logout").hidden = !meta.login;
+  // warm the cache so switching the preview doesn't flash
+  meta.options.shape.items.forEach((i) => fetch(`gems/${i.id}.glb`).catch(() => {}));
   renderOptions();
   applyBrand();
   render(null);
