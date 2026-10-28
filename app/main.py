@@ -449,9 +449,9 @@ def spec_page(design_id: str):
     return """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>כרטיס עבודה</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400&family=Heebo:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bellefair&family=Heebo:wght@300;400;500&display=swap" rel="stylesheet">
 <style>body{font:16px/1.6 Heebo,system-ui,sans-serif;margin:0;background:#fff;color:#1f2321}main{max-width:720px;margin:0 auto;padding:28px 16px}
-h1{font:300 34px/1.2 "Frank Ruhl Libre",serif;margin:0}.n{color:#6d7370;font-size:14px}
+h1{font:400 34px/1.2 Bellefair,serif;margin:0}.n{color:#6d7370;font-size:14px}
 img{width:100%%;max-width:340px;border-radius:4px;margin:16px 0}table{width:100%%;border-collapse:collapse;margin:12px 0}
 th,td{text-align:right;padding:7px 4px;border-bottom:1px solid #e4e6e3;vertical-align:top}th{color:#6d7370;font-weight:400;width:45%%}
 .ok{color:#2f6b4f}a.btn{display:inline-block;margin:8px 0 0 8px;padding:8px 14px;border:1px solid #1f3a33;color:#1f3a33;border-radius:4px;text-decoration:none}
