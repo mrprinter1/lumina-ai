@@ -84,7 +84,8 @@ function renderOptions() {
       b.dataset.spot = "";
       b.dataset.key = key;
       b.dataset.id = item.id;
-      b.innerHTML = (key === "shape" ? shapeIcon(item.id) : "") + `<span>${item.he}</span>`;
+      b.innerHTML = (key === "shape" ? shapeIcon(item.id) : key === "metal" ? `<i class="sw sw-${item.id}" aria-hidden="true"></i>` : "") +
+        `<span>${item.he}</span>`;
       b.onclick = () => { selections[key] = item.id; syncOptions(); FX.sparkAt(b, { count: 7, reach: 22 }); };
       if (PREVIEW_KEYS.includes(key)) {
         // desktop: the preview follows the pointer; touch: it follows the selection (a tap selects)
