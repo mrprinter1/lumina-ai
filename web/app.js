@@ -67,6 +67,7 @@ function route() {
 window.addEventListener("hashchange", route);
 
 /* ---------- options ---------- */
+const PREVIEW_KEYS = ["shape", "setting", "band"];
 function renderOptions() {
   const box = $("#optionGroups");
   box.innerHTML = "";
@@ -74,7 +75,7 @@ function renderOptions() {
     selections[key] ??= meta.defaults[key];
     const g = document.createElement("div");
     g.className = "group" + (key === "shape" ? " shapes" : "");
-    g.innerHTML = `<h3>${group.label}</h3>` + (key === "shape" ? GEM_PANEL : "") +
+    g.innerHTML = `<h3>${group.label}</h3>` + (PREVIEW_KEYS.includes(key) ? previewPanel(key) : "") +
       `<div class="opts" role="group" aria-label="${group.label}"></div>`;
     for (const item of group.items) {
       const b = document.createElement("button");
@@ -85,12 +86,12 @@ function renderOptions() {
       b.dataset.id = item.id;
       b.innerHTML = (key === "shape" ? shapeIcon(item.id) : "") + `<span>${item.he}</span>`;
       b.onclick = () => { selections[key] = item.id; syncOptions(); FX.sparkAt(b, { count: 7, reach: 22 }); };
-      if (key === "shape") {
+      if (PREVIEW_KEYS.includes(key)) {
         // desktop: the preview follows the pointer; touch: it follows the selection (a tap selects)
-        b.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && showGem(item.id));
-        b.addEventListener("pointerleave", (e) => e.pointerType === "mouse" && showGem(selections.shape));
-        b.addEventListener("focus", () => showGem(item.id));
-        b.addEventListener("blur", () => showGem(selections.shape));
+        b.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && showPreview(key, item.id));
+        b.addEventListener("pointerleave", (e) => e.pointerType === "mouse" && showPreview(key, selections[key]));
+        b.addEventListener("focus", () => showPreview(key, item.id));
+        b.addEventListener("blur", () => showPreview(key, selections[key]));
       }
       g.querySelector(".opts").appendChild(b);
     }
@@ -100,38 +101,57 @@ function renderOptions() {
 }
 function syncOptions() {
   $$(".opt").forEach((b) => b.setAttribute("aria-pressed", String(selections[b.dataset.key] === b.dataset.id)));
-  showGem(selections.shape);
+  PREVIEW_KEYS.forEach((k) => showPreview(k, selections[k]));
 }
 
-/* ---------- gem preview ---------- */
-const GEM_PANEL = `<div class="gem" id="gem" aria-live="polite">
-  <model-viewer id="gemViewer" auto-rotate rotation-per-second="38deg" camera-orbit="25deg 66deg 112%"
-    interaction-prompt="none" disable-zoom disable-pan exposure="1.25" shadow-intensity="0"
-    environment-image="gems/env.jpg" alt="" loading="eager"></model-viewer>
-  <div class="gem-text"><b id="gemName"></b><p id="gemBlurb"></p><small id="gemSize"></small></div>
-</div>`;
-let gemShown = null;
-function gemSize(item, carat) {
+/* ---------- option previews ----------
+   Each shape, setting and band can show a photo (made once by scripts/make_catalog_images.py, listed in
+   meta.previews) with a one-line description. Until a photo exists: shapes show a turning 3D model,
+   settings and bands show just the description. */
+function previewPanel(key) {
+  const viewer = key === "shape"
+    ? `<model-viewer auto-rotate rotation-per-second="38deg" camera-orbit="25deg 66deg 112%" interaction-prompt="none"
+         disable-zoom disable-pan exposure="1.25" shadow-intensity="0" environment-image="gems/env.jpg" alt="" loading="eager" hidden></model-viewer>` : "";
+  return `<div class="gem" id="pv-${key}" aria-live="polite">
+    <div class="gem-media"><img alt="" hidden>${viewer}</div>
+    <div class="gem-text"><b></b><p></p><small hidden></small></div>
+  </div>`;
+}
+function stoneSize(item, carat) {
   // stone width and length scale with the cube root of weight; 1 carat sizes are typical, not exact
   const k = Math.cbrt(Number(carat) || 1);
   const [w, l] = item.dims_1ct.map((v) => Math.round(v * k * 10) / 10);
   return w === l ? `${w} מ״מ` : `${l} × ${w} מ״מ`;
 }
-function showGem(id, { force = false } = {}) {
-  const box = $("#gem");
+function showPreview(key, id) {
+  const box = $(`#pv-${key}`);
   if (!box || !meta || !id) return;
-  const item = meta.options.shape.items.find((i) => i.id === id);
+  const item = meta.options[key].items.find((i) => i.id === id);
   if (!item) return;
-  const carat = selections.carat || meta.defaults.carat;
-  const hovering = id !== selections.shape;
-  $("#gemName").textContent = item.he;
-  $("#gemBlurb").textContent = item.blurb || "";
-  $("#gemSize").textContent = `בערך ${gemSize(item, carat)} ב-${labelOf("carat", carat)}`;
-  box.classList.toggle("peek", hovering);
-  const viewer = $("#gemViewer");
-  if (gemShown !== id || force) {
-    gemShown = id;
-    viewer.setAttribute("src", `gems/${id}.glb`);
+  box.classList.toggle("peek", id !== selections[key]);
+  box.querySelector("b").textContent = item.he;
+  box.querySelector("p").textContent = item.blurb || "";
+  const size = box.querySelector("small");
+  size.hidden = key !== "shape";
+  if (key === "shape") {
+    const carat = selections.carat || meta.defaults.carat;
+    size.textContent = `בערך ${stoneSize(item, carat)} ב-${labelOf("carat", carat)}`;
+  }
+  const img = box.querySelector("img"), viewer = box.querySelector("model-viewer");
+  const photos = meta.previews?.[key] || [];
+  const hasPhoto = photos.includes(id);
+  const hasModel = key === "shape";
+  img.hidden = !hasPhoto;
+  if (viewer) viewer.hidden = hasPhoto || !hasModel;
+  // the panel keeps one height per category, or the buttons below would jump out from under the pointer on hover:
+  // the picture slot stays (empty if this option has no photo) whenever any option of the category has one
+  box.classList.toggle("no-media", !photos.length && !hasModel);
+  if (hasPhoto) {
+    const src = `catalog/${key}/${id}.jpg`;
+    if (img.getAttribute("src") !== src) { img.setAttribute("src", src); img.alt = item.he; }
+  } else if (viewer) {
+    const src = `gems/${id}.glb`;
+    if (viewer.getAttribute("src") !== src) viewer.setAttribute("src", src);
   }
 }
 
@@ -643,6 +663,7 @@ $("#settingsForm").addEventListener("submit", async (e) => {
   $("#logout").hidden = !meta.login;
   // warm the cache so switching the preview doesn't flash
   meta.options.shape.items.forEach((i) => fetch(`gems/${i.id}.glb`).catch(() => {}));
+  for (const k of PREVIEW_KEYS) (meta.previews?.[k] || []).forEach((id) => { new Image().src = `catalog/${k}/${id}.jpg`; });
   renderOptions();
   applyBrand();
   render(null);

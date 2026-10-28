@@ -158,12 +158,21 @@ def logout():
 
 # ---------- jeweler API ----------
 
+def catalog_previews():
+    """Option photos made by scripts/make_catalog_images.py: {category: [ids]}."""
+    out = {}
+    for key in ("shape", "setting", "band"):
+        folder = config.WEB_DIR / "catalog" / key
+        out[key] = sorted(f.stem for f in folder.glob("*.jpg")) if folder.is_dir() else []
+    return out
+
+
 @app.get("/api/meta")
 def meta():
     return {"options": catalog.OPTIONS, "defaults": catalog.DEFAULTS, "size_systems": sizes.SYSTEMS,
             "stages": store.ORDER_STAGES,
             "providers": {"image": images.get_provider().name, "model3d": model3d.get_provider().name},
-            "login": auth.enabled()}
+            "login": auth.enabled(), "previews": catalog_previews()}
 
 
 @app.get("/api/settings")
